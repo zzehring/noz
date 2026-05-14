@@ -1,0 +1,26 @@
+# Binaries
+noz
+*.exe
+/bin/
+
+# Go
+*.test
+*.out
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Planning docs (unvetted working docs)
+planning/
+
+# Noz runtime
+~/.config/noz/
