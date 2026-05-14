@@ -13,22 +13,26 @@ import (
 
 func newRmCmd() *cobra.Command {
 	var force bool
+	var keepWorktree bool
+	var deleteBranch bool
 
 	cmd := &cobra.Command{
 		Use:   "rm <slug>",
 		Short: "Remove a pairing session (worktree + tmux)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRm(args[0], force)
+			return runRm(args[0], force, keepWorktree, deleteBranch)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "skip confirmation for dirty worktrees")
+	cmd.Flags().BoolVar(&keepWorktree, "keep-worktree", false, "only kill tmux session, keep worktree")
+	cmd.Flags().BoolVar(&deleteBranch, "delete-branch", false, "also delete the local branch")
 
 	return cmd
 }
 
-func runRm(slug string, force bool) error {
+func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 	root := nozRoot()
 
 	// Try to find the worktree directory
@@ -44,23 +48,41 @@ func runRm(slug string, force bool) error {
 
 	removed := false
 
-	if wtDir != "" && dirExists(wtDir) {
-		if err := removeWorktree(wtDir, slug, force); err != nil {
-			return err
+	if !keepWorktree {
+		if wtDir != "" && dirExists(wtDir) {
+			if err := removeWorktree(wtDir, slug, force); err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "noz: removed worktree at %s\n", wtDir)
+			removed = true
+		} else if dirExists(scratchDir) {
+			if err := os.RemoveAll(scratchDir); err != nil {
+				return fmt.Errorf("removing scratch dir: %w", err)
+			}
+			fmt.Fprintf(os.Stderr, "noz: removed scratch workspace at %s\n", scratchDir)
+			removed = true
 		}
-		removed = true
-	} else if dirExists(scratchDir) {
-		if err := os.RemoveAll(scratchDir); err != nil {
-			return fmt.Errorf("removing scratch dir: %w", err)
-		}
-		fmt.Fprintf(os.Stderr, "noz: removed scratch workspace at %s\n", scratchDir)
-		removed = true
 	}
 
 	// Kill tmux session if it exists
 	if tmuxHasSession(slug) {
 		exec.Command("tmux", "kill-session", "-t", slug).Run()
 		fmt.Fprintf(os.Stderr, "noz: killed tmux session %s\n", slug)
+		removed = true
+	}
+
+	// Delete branch if requested
+	if deleteBranch {
+		if err := runGit("branch", "-d", slug); err != nil {
+			// Try force delete if normal delete fails
+			if err := runGit("branch", "-D", slug); err != nil {
+				fmt.Fprintf(os.Stderr, "noz: could not delete branch %s\n", slug)
+			} else {
+				fmt.Fprintf(os.Stderr, "noz: force-deleted branch %s\n", slug)
+			}
+		} else {
+			fmt.Fprintf(os.Stderr, "noz: deleted branch %s\n", slug)
+		}
 		removed = true
 	}
 
