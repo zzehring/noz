@@ -19,7 +19,8 @@ func newRmCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rm <slug>",
 		Short: "Remove a pairing session (worktree + tmux)",
-		Args:  cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeTmuxSessions,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRm(args[0], force, keepWorktree, deleteBranch)
 		},

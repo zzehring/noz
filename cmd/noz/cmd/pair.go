@@ -29,7 +29,8 @@ Examples:
   noz pair --pr 456            # PR review (like cw-pr)
   noz pair investigate         # scratch dir (no repo)
   noz pair feature-auth main   # worktree from specific base branch`,
-		Args: cobra.RangeArgs(0, 2),
+		Args:              cobra.RangeArgs(0, 2),
+		ValidArgsFunction: completeTmuxSessions,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 && prNumber == "" {
 				return fmt.Errorf("usage: noz pair <slug> or noz pair --pr <number>")
