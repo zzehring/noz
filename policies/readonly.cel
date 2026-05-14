@@ -1,0 +1,62 @@
+// kubectl-readonly: allow read-only kubectl commands
+request.cmd == "kubectl" &&
+  request.args.exists(a, a == "get" || a == "describe" || a == "logs" || a == "top" || a == "explain")
+  ? "ALLOW"
+  : ""
+---
+// gcx-readonly: allow gcx read operations
+request.cmd == "gcx" &&
+  request.args.exists(a, a == "logs" || a == "metrics" || a == "traces" ||
+                         a == "dashboards" || a == "alert" || a == "slo" ||
+                         a == "config" || a == "stacks")
+  ? "ALLOW"
+  : ""
+---
+// gh-readonly: allow gh read operations, deny mutations
+request.cmd == "gh" &&
+  request.args.exists(a, a == "pr" || a == "issue" || a == "repo") &&
+  request.args.all(a, !(a == "create" || a == "merge" || a == "close" || a == "delete" || a == "edit"))
+  ? "ALLOW"
+  : ""
+---
+// git-local: allow all local git operations
+request.cmd == "git" && !request.args.exists(a, a == "push" || a == "force-push")
+  ? "ALLOW"
+  : ""
+---
+// git-push-pause: git push requires human approval
+request.cmd == "git" && request.args.exists(a, a == "push")
+  ? "PAUSE"
+  : ""
+---
+// safe-read-tools: common read-only CLI tools
+request.cmd in ["cat", "ls", "find", "grep", "rg", "jq", "yq", "head", "tail", "wc", "diff", "file", "stat", "tree", "less", "sort", "uniq", "cut", "tr", "awk", "sed", "pwd", "which", "env", "echo", "date"]
+  ? "ALLOW"
+  : ""
+---
+// go-readonly: allow go read/compile commands, deny mutations
+request.cmd == "go" &&
+  request.args.exists(a, a == "build" || a == "test" || a == "vet" || a == "version" || a == "env" || a == "list" || a == "doc")
+  ? "ALLOW"
+  : ""
+---
+// go-fmt-allow: go fmt is safe (reformats only)
+request.cmd == "go" && request.args.exists(a, a == "fmt")
+  ? "ALLOW"
+  : ""
+---
+// go-mod-readonly: allow go mod tidy/graph/verify, deny go get/download
+request.cmd == "go" &&
+  request.args.exists(a, a == "mod") &&
+  request.args.exists(a, a == "tidy" || a == "graph" || a == "verify" || a == "why")
+  ? "ALLOW"
+  : ""
+---
+// go-mutations-deny: go get, go install, go mod download change state
+request.cmd == "go" &&
+  request.args.exists(a, a == "get" || a == "install" || a == "generate")
+  ? "DENY"
+  : ""
+---
+// default-deny: everything else is denied
+"DENY"

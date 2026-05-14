@@ -1,0 +1,57 @@
+// kubectl-readonly: allow read-only kubectl
+request.cmd == "kubectl" &&
+  request.args.exists(a, a == "get" || a == "describe" || a == "logs" || a == "top" || a == "explain")
+  ? "ALLOW"
+  : ""
+---
+// kubectl-apply-pause: kubectl apply/create requires approval
+request.cmd == "kubectl" &&
+  request.args.exists(a, a == "apply" || a == "create" || a == "delete" || a == "patch" || a == "edit")
+  ? "PAUSE"
+  : ""
+---
+// gcx-readonly: allow gcx read operations
+request.cmd == "gcx"
+  ? "ALLOW"
+  : ""
+---
+// gh-read: allow gh reads
+request.cmd == "gh" &&
+  request.args.exists(a, a == "pr" || a == "issue" || a == "repo") &&
+  request.args.all(a, !(a == "merge" || a == "delete"))
+  ? "ALLOW"
+  : ""
+---
+// gh-pr-create-pause: creating PRs requires approval
+request.cmd == "gh" &&
+  request.args.exists(a, a == "pr") && request.args.exists(a, a == "create")
+  ? "PAUSE"
+  : ""
+---
+// git-push-pause: push requires approval
+request.cmd == "git" && request.args.exists(a, a == "push")
+  ? "PAUSE"
+  : ""
+---
+// git-local: all other git is allowed
+request.cmd == "git"
+  ? "ALLOW"
+  : ""
+---
+// safe-tools: common CLI tools
+request.cmd in ["cat", "ls", "find", "grep", "rg", "jq", "yq", "head", "tail", "wc", "diff", "file", "stat", "tree", "less", "sort", "uniq", "cut", "tr", "awk", "sed", "pwd", "which", "env", "echo", "date", "curl", "wget"]
+  ? "ALLOW"
+  : ""
+---
+// language-tools: build/test tools
+request.cmd in ["go", "node", "npm", "npx", "python", "pip", "make", "cargo", "rustc"]
+  ? "ALLOW"
+  : ""
+---
+// editors
+request.cmd in ["nvim", "vim", "vi", "nano", "code"]
+  ? "ALLOW"
+  : ""
+---
+// default-deny
+"DENY"

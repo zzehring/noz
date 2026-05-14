@@ -1,0 +1,45 @@
+// kubectl-readonly: allow read-only k8s operations
+request.cmd == "kubectl" &&
+  request.args.exists(a, a == "get" || a == "describe" || a == "logs" || a == "top" || a == "explain" || a == "auth")
+  ? "ALLOW"
+  : ""
+---
+// kubectl-mutations-pause: any k8s write requires approval
+request.cmd == "kubectl"
+  ? "PAUSE"
+  : ""
+---
+// gcx-readonly: allow all gcx (Grafana read operations)
+request.cmd == "gcx"
+  ? "ALLOW"
+  : ""
+---
+// gh-readonly: allow gh reads
+request.cmd == "gh" &&
+  request.args.all(a, !(a == "create" || a == "merge" || a == "close" || a == "delete" || a == "edit"))
+  ? "ALLOW"
+  : ""
+---
+// git-readonly: allow local git read operations
+request.cmd == "git" &&
+  request.args.exists(a, a == "log" || a == "status" || a == "diff" || a == "show" || a == "branch" || a == "remote")
+  ? "ALLOW"
+  : ""
+---
+// git-write-pause: any git write requires approval
+request.cmd == "git"
+  ? "PAUSE"
+  : ""
+---
+// safe-read-tools
+request.cmd in ["cat", "ls", "find", "grep", "rg", "jq", "yq", "head", "tail", "wc", "diff", "file", "stat", "tree", "less", "sort", "uniq", "cut", "pwd", "which", "env", "echo", "date"]
+  ? "ALLOW"
+  : ""
+---
+// network-diag: common SRE tools
+request.cmd in ["curl", "dig", "nslookup", "ping", "traceroute", "ss", "netstat"]
+  ? "ALLOW"
+  : ""
+---
+// default-deny
+"DENY"
