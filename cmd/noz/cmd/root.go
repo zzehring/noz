@@ -27,15 +27,11 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.PersistentFlags().CountVarP(&verbose, "verbose", "v", "increase verbosity (up to -vvv)")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "JSON output for scripting")
 
-	rootCmd.AddCommand(newExecCmd())
 	rootCmd.AddCommand(newGateCmd())
 	rootCmd.AddCommand(newPolicyCmd())
-	rootCmd.AddCommand(newGoCmd())
 	rootCmd.AddCommand(newPairCmd())
 	rootCmd.AddCommand(newLsCmd())
 	rootCmd.AddCommand(newRmCmd())
-	rootCmd.AddCommand(newUpCmd())
-	rootCmd.AddCommand(newDownCmd())
 	rootCmd.AddCommand(newSetupCmd())
 
 	return rootCmd
