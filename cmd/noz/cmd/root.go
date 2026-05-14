@@ -32,9 +32,10 @@ func NewRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newPolicyCmd())
 	rootCmd.AddCommand(newGoCmd())
 	rootCmd.AddCommand(newPairCmd())
+	rootCmd.AddCommand(newLsCmd())
+	rootCmd.AddCommand(newRmCmd())
 	rootCmd.AddCommand(newUpCmd())
 	rootCmd.AddCommand(newDownCmd())
-	rootCmd.AddCommand(newPsCmd())
 	rootCmd.AddCommand(newSetupCmd())
 
 	return rootCmd
