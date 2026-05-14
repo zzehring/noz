@@ -74,8 +74,10 @@ func NewFromSource(source string) (*Gate, error) {
 func (g *Gate) Evaluate(req *CommandRequest) GateResult {
 	activation := map[string]interface{}{
 		"request": map[string]interface{}{
+			"tool":    req.Tool,
 			"cmd":     req.Cmd,
 			"args":    req.Args,
+			"path":    req.Path,
 			"env":     req.Env,
 			"workdir": req.WorkDir,
 			"agent":   req.Agent,

@@ -93,18 +93,16 @@ func setupClaude(remove, projectOnly, dryRun bool) error {
 		return removeCloudeHooks(settings, settingsPath, dryRun)
 	}
 
-	// Build the hook command
-	hookCmd := fmt.Sprintf("echo \"$CLAUDE_TOOL_INPUT\" | %s gate --policy %s", nozBin, policyPath)
-
-	// Build the hook config
-	hook := map[string]interface{}{
-		"matcher": "Bash",
-		"hooks": []interface{}{
-			map[string]interface{}{
-				"type":    "command",
-				"command": hookCmd,
-			},
-		},
+	// Build hooks for all tool types
+	type toolHook struct {
+		matcher string
+		tool    string // --tool flag value
+	}
+	toolHooks := []toolHook{
+		{"Bash", "bash"},
+		{"Read", "read"},
+		{"Write", "write"},
+		{"Edit", "edit"},
 	}
 
 	// Merge into existing settings
@@ -113,9 +111,22 @@ func setupClaude(remove, projectOnly, dryRun bool) error {
 		hooks = make(map[string]interface{})
 	}
 
-	// Check for existing noz hooks and replace
 	preToolUse := getOrCreatePreToolUse(hooks)
-	preToolUse = upsertNozHook(preToolUse, hook)
+
+	for _, th := range toolHooks {
+		hookCmd := fmt.Sprintf("echo \"$CLAUDE_TOOL_INPUT\" | %s gate --tool %s --policy %s", nozBin, th.tool, policyPath)
+		hook := map[string]interface{}{
+			"matcher": th.matcher,
+			"hooks": []interface{}{
+				map[string]interface{}{
+					"type":    "command",
+					"command": hookCmd,
+				},
+			},
+		}
+		preToolUse = upsertNozHookByMatcher(preToolUse, hook, th.matcher)
+	}
+
 	hooks["PreToolUse"] = preToolUse
 	settings["hooks"] = hooks
 
@@ -125,7 +136,7 @@ func setupClaude(remove, projectOnly, dryRun bool) error {
 		return err
 	}
 
-	fmt.Fprintf(os.Stderr, "\nnoz: hook command:\n  %s\n\n", hookCmd)
+	fmt.Fprintf(os.Stderr, "\nnoz: hooks for: Bash, Read, Write, Edit\n")
 
 	if dryRun {
 		fmt.Fprintf(os.Stderr, "noz: dry-run — would write to %s:\n", settingsPath)
@@ -285,15 +296,26 @@ func getOrCreatePreToolUse(hooks map[string]interface{}) []interface{} {
 	return []interface{}{}
 }
 
-// upsertNozHook replaces an existing noz hook or appends a new one.
-func upsertNozHook(preToolUse []interface{}, newHook map[string]interface{}) []interface{} {
+// upsertNozHookByMatcher replaces an existing noz hook with matching matcher, or appends.
+func upsertNozHookByMatcher(preToolUse []interface{}, newHook map[string]interface{}, matcher string) []interface{} {
 	for i, entry := range preToolUse {
-		if isNozHook(entry) {
+		if isNozHookWithMatcher(entry, matcher) {
 			preToolUse[i] = newHook
 			return preToolUse
 		}
 	}
 	return append(preToolUse, newHook)
+}
+
+func isNozHookWithMatcher(entry interface{}, matcher string) bool {
+	m, ok := entry.(map[string]interface{})
+	if !ok {
+		return false
+	}
+	if m["matcher"] != matcher {
+		return false
+	}
+	return isNozHook(entry)
 }
 
 // isNozHook checks if a PreToolUse entry is a noz hook.

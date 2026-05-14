@@ -3,8 +3,11 @@ package gate
 // CommandRequest is the structured representation of a tool call from an agent.
 // Every field is available in CEL policy expressions via the "request" variable.
 type CommandRequest struct {
-	Cmd       string            `json:"cmd"`
-	Args      []string          `json:"args"`
+	Tool      string            `json:"tool"`              // "bash", "read", "write", "edit", "glob", "grep"
+	Cmd       string            `json:"cmd"`               // binary name (for bash tool)
+	Args      []string          `json:"args"`              // arguments (for bash tool)
+	Path      string            `json:"path,omitempty"`    // file path (for read/write/edit)
+	Content   string            `json:"content,omitempty"` // content being written (for write/edit)
 	Env       map[string]string `json:"env,omitempty"`
 	WorkDir   string            `json:"workdir,omitempty"`
 	Agent     string            `json:"agent,omitempty"`

@@ -58,5 +58,33 @@ request.cmd == "go" &&
   ? "DENY"
   : ""
 ---
+// block-sensitive-files: never read/write secrets, keys, credentials
+request.tool in ["read", "write", "edit"] &&
+  request.path.matches(".*\\.(env|pem|key|p12|pfx|secret|credentials)$")
+  ? "DENY"
+  : ""
+---
+// block-sensitive-dirs: no touching credential/config dirs
+request.tool in ["read", "write", "edit"] &&
+  (request.path.contains("/.ssh/") ||
+   request.path.contains("/.aws/") ||
+   request.path.contains("/.config/gcloud/") ||
+   request.path.contains("/.config/gcx/") ||
+   request.path.contains("/.kube/config") ||
+   request.path.contains("/.gnupg/") ||
+   request.path.contains("/.config/noz/credentials/"))
+  ? "DENY"
+  : ""
+---
+// block-writes: readonly policy means no file writes
+request.tool in ["write", "edit"]
+  ? "DENY"
+  : ""
+---
+// allow-reads: all file reads allowed (except sensitive above)
+request.tool == "read"
+  ? "ALLOW"
+  : ""
+---
 // default-deny: everything else is denied
 "DENY"

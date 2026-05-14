@@ -29,8 +29,14 @@ Exit codes:
   2 = DENY  (block the tool call)
   3 = PAUSE (block + veto protocol)
 
+Supports all agent tool types:
+  --tool bash   → parses shell commands, evaluates each segment
+  --tool read   → evaluates file path access
+  --tool write  → evaluates file path + content
+  --tool edit   → evaluates file path access
+
 Designed to be called from agent pre-execution hooks:
-  Claude Code: PreToolUse hook
+  Claude Code: PreToolUse hook (Bash, Read, Write, Edit)
   Codex CLI:   PreToolUse hook
   Gemini CLI:  BeforeTool hook`,
 		SilenceUsage: true,
@@ -40,24 +46,50 @@ Designed to be called from agent pre-execution hooks:
 	}
 
 	cmd.Flags().StringVar(&inputFormat, "input-format", "claude", "Input format: claude, codex, gemini")
-	cmd.Flags().StringVar(&tool, "tool", "bash", "Tool type being gated: bash, write, edit")
+	cmd.Flags().StringVar(&tool, "tool", "bash", "Tool type being gated: bash, read, write, edit, glob, grep")
 	cmd.Flags().StringVar(&guardLog, "guard-log", "", "Path to append guard tower audit log")
 
 	return cmd
 }
 
 func runGate(inputFormat, tool, guardLog string) error {
-	// Extract the command string from agent-specific input
-	cmdStr, err := extractCommand(inputFormat, tool)
+	// Load policy
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+
+	pp := policyName
+	if pp == "" {
+		pp = cfg.DefaultPolicy()
+	}
+
+	g, err := gate.New(pp)
+	if err != nil {
+		return fmt.Errorf("loading policy: %w", err)
+	}
+
+	// Route based on tool type
+	switch tool {
+	case "bash":
+		return gateBash(g, inputFormat, guardLog)
+	case "read", "write", "edit", "glob", "grep":
+		return gateFile(g, tool, inputFormat, guardLog)
+	default:
+		return gateBash(g, inputFormat, guardLog)
+	}
+}
+
+// gateBash handles Bash tool calls — parses shell string, evaluates each segment.
+func gateBash(g *gate.Gate, inputFormat, guardLog string) error {
+	cmdStr, err := extractCommand(inputFormat, "bash")
 	if err != nil {
 		return err
 	}
-
 	if cmdStr == "" {
-		return nil // empty command, allow
+		return nil
 	}
 
-	// Parse shell command into segments
 	commands, err := shellparse.Parse(cmdStr)
 	if err != nil {
 		logGuard(guardLog, "DENY", cmdStr, "parse-error", err.Error())
@@ -66,142 +98,148 @@ func runGate(inputFormat, tool, guardLog string) error {
 		return nil
 	}
 
-	// Load policy
-	cfg, err := config.Load(cfgFile)
-	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
-	}
-
-	policyPath := policyName
-	if policyPath == "" {
-		policyPath = cfg.DefaultPolicy()
-	}
-
-	g, err := gate.New(policyPath)
-	if err != nil {
-		return fmt.Errorf("loading policy: %w", err)
-	}
-
-	// Evaluate each command segment
 	for _, cmd := range commands {
 		req := &gate.CommandRequest{
+			Tool: "bash",
 			Cmd:  cmd.Name,
 			Args: cmd.Args,
 			Mode: "autonomous",
 		}
 
-		result := g.Evaluate(req)
-		cmdDisplay := cmd.Name
+		display := cmd.Name
 		if len(cmd.Args) > 0 {
-			cmdDisplay += " " + strings.Join(cmd.Args, " ")
+			display += " " + strings.Join(cmd.Args, " ")
 		}
 
-		logGuard(guardLog, string(result.Verdict), cmdDisplay, result.Rule, result.Reason)
-
-		switch result.Verdict {
-		case gate.Deny:
-			msg := fmt.Sprintf("noz: DENY %s (rule: %s)", cmdDisplay, result.Rule)
-			fmt.Fprintln(os.Stderr, msg)
-
-			if jsonOutput {
-				writeGeminiResponse("deny", result.Rule)
-			}
-			os.Exit(2)
-		case gate.Pause:
-			msg := fmt.Sprintf("noz: PAUSE %s (rule: %s)", cmdDisplay, result.Rule)
-			fmt.Fprintln(os.Stderr, msg)
-
-			if jsonOutput {
-				writeGeminiResponse("deny", "requires approval: "+result.Rule)
-			}
-			os.Exit(2) // hooks don't support PAUSE natively, use DENY for now
-		case gate.Allow:
-			// continue to next segment
+		if blocked := evalAndReport(g, req, display, guardLog); blocked {
+			return nil
 		}
 	}
 
-	// All segments allowed
 	if jsonOutput {
 		writeGeminiResponse("allow", "")
 	}
-
 	return nil
+}
+
+// gateFile handles Read/Write/Edit/Glob/Grep tool calls — evaluates file path.
+func gateFile(g *gate.Gate, tool, inputFormat, guardLog string) error {
+	toolInput, err := readToolInput(inputFormat)
+	if err != nil {
+		return err
+	}
+	if toolInput == nil {
+		return nil
+	}
+
+	path := extractPath(toolInput)
+	if path == "" {
+		return nil // no path to evaluate, allow
+	}
+
+	req := &gate.CommandRequest{
+		Tool: tool,
+		Path: path,
+		Mode: "autonomous",
+	}
+
+	// For write/edit, capture content for policy evaluation
+	if tool == "write" || tool == "edit" {
+		if content, ok := toolInput["content"].(string); ok {
+			req.Content = content
+		}
+		if content, ok := toolInput["new_string"].(string); ok {
+			req.Content = content
+		}
+	}
+
+	display := fmt.Sprintf("%s %s", tool, path)
+	evalAndReport(g, req, display, guardLog)
+	return nil
+}
+
+// evalAndReport evaluates a request and handles the verdict. Returns true if blocked.
+func evalAndReport(g *gate.Gate, req *gate.CommandRequest, display, guardLog string) bool {
+	result := g.Evaluate(req)
+	logGuard(guardLog, string(result.Verdict), display, result.Rule, result.Reason)
+
+	switch result.Verdict {
+	case gate.Deny:
+		fmt.Fprintf(os.Stderr, "noz: DENY %s (rule: %s)\n", display, result.Rule)
+		if jsonOutput {
+			writeGeminiResponse("deny", result.Rule)
+		}
+		os.Exit(2)
+		return true
+	case gate.Pause:
+		fmt.Fprintf(os.Stderr, "noz: PAUSE %s (rule: %s)\n", display, result.Rule)
+		if jsonOutput {
+			writeGeminiResponse("deny", "requires approval: "+result.Rule)
+		}
+		os.Exit(2)
+		return true
+	}
+	return false
+}
+
+// readToolInput reads the raw JSON tool input from env var or stdin.
+func readToolInput(format string) (map[string]interface{}, error) {
+	var raw string
+
+	if envInput := os.Getenv("CLAUDE_TOOL_INPUT"); envInput != "" {
+		raw = envInput
+	} else {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return nil, fmt.Errorf("reading stdin: %w", err)
+		}
+		raw = string(data)
+	}
+
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+
+	var toolInput map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &toolInput); err != nil {
+		return nil, fmt.Errorf("parsing tool input: %w", err)
+	}
+	return toolInput, nil
 }
 
 // extractCommand gets the shell command string from agent-specific input.
 func extractCommand(format, tool string) (string, error) {
-	switch format {
-	case "claude", "codex":
-		return extractClaudeCommand(tool)
-	case "gemini":
-		return extractGeminiCommand()
-	default:
-		return extractClaudeCommand(tool)
+	toolInput, err := readToolInput(format)
+	if err != nil {
+		return "", err
 	}
-}
-
-// extractClaudeCommand reads from CLAUDE_TOOL_INPUT env var or stdin.
-func extractClaudeCommand(tool string) (string, error) {
-	var input string
-
-	// Try env var first
-	if envInput := os.Getenv("CLAUDE_TOOL_INPUT"); envInput != "" {
-		input = envInput
-	} else {
-		// Fall back to stdin
-		data, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return "", fmt.Errorf("reading stdin: %w", err)
-		}
-		input = string(data)
-	}
-
-	if input == "" {
+	if toolInput == nil {
 		return "", nil
 	}
 
-	// Parse the JSON to extract the command
-	var toolInput map[string]interface{}
-	if err := json.Unmarshal([]byte(input), &toolInput); err != nil {
-		// Not JSON — treat as raw command string
-		return strings.TrimSpace(input), nil
-	}
-
-	// Claude/Codex Bash tool sends {"command": "..."}
+	// Bash tool sends {"command": "..."}
 	if cmd, ok := toolInput["command"].(string); ok {
 		return cmd, nil
 	}
 
-	// For Write/Edit tools, extract the path
-	if tool == "write" || tool == "edit" {
-		if path, ok := toolInput["file_path"].(string); ok {
-			return path, nil
-		}
-	}
-
 	return "", nil
 }
 
-// extractGeminiCommand reads Gemini's JSON protocol from stdin.
-func extractGeminiCommand() (string, error) {
-	data, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		return "", fmt.Errorf("reading stdin: %w", err)
+// extractPath gets the file path from a tool input JSON.
+func extractPath(toolInput map[string]interface{}) string {
+	// Claude Code uses "file_path" for Read/Write/Edit
+	if p, ok := toolInput["file_path"].(string); ok {
+		return p
 	}
-
-	var geminiInput struct {
-		Tool  string                 `json:"tool"`
-		Input map[string]interface{} `json:"input"`
+	// Also check "path" as a fallback
+	if p, ok := toolInput["path"].(string); ok {
+		return p
 	}
-	if err := json.Unmarshal(data, &geminiInput); err != nil {
-		return "", fmt.Errorf("parsing gemini input: %w", err)
+	// Glob uses "pattern"
+	if p, ok := toolInput["pattern"].(string); ok {
+		return p
 	}
-
-	if cmd, ok := geminiInput.Input["command"].(string); ok {
-		return cmd, nil
-	}
-
-	return "", nil
+	return ""
 }
 
 func writeGeminiResponse(decision, reason string) {
