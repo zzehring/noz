@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=schema.json
 name: dev
 description: Development policy — allows code changes, pauses on push/PR
 

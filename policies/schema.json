@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/zzehring/nozey/policies/schema.json",
+  "title": "Noz Policy",
+  "description": "Policy file for noz CEL gate. Defines named rules with CEL expressions that evaluate agent tool calls.",
+  "type": "object",
+  "required": ["name", "rules"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Policy name (e.g., readonly, dev, sre)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the policy"
+    },
+    "rules": {
+      "type": "array",
+      "description": "Ordered list of rules. First match wins.",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    }
+  },
+  "$defs": {
+    "rule": {
+      "type": "object",
+      "required": ["name", "verdict"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Rule name (used in audit logs and gate output)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Human-readable description of what this rule does"
+        },
+        "cel": {
+          "type": "string",
+          "description": "CEL expression evaluated against the request. If omitted, rule matches unconditionally (use for default-deny).\n\nAvailable variables in `request`:\n- tool: string (bash, read, write, edit, glob, grep)\n- cmd: string (binary name, for bash tool)\n- args: list<string> (arguments, for bash tool)\n- path: string (file path, for read/write/edit)\n- env: map<string,string>\n- workdir: string\n- agent: string\n- session: string\n- mode: string (autonomous, interactive)"
+        },
+        "verdict": {
+          "type": "string",
+          "enum": ["ALLOW", "DENY", "PAUSE"],
+          "description": "ALLOW = proceed, DENY = block, PAUSE = block and await human approval"
+        }
+      }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=schema.json
 name: sre
 description: SRE policy — read-only infra, pauses on any mutation
 

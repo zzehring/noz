@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=schema.json
 name: readonly
 description: Read-only access for autonomous agents
 
