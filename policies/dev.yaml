@@ -1,0 +1,88 @@
+name: dev
+description: Development policy — allows code changes, pauses on push/PR
+
+rules:
+  # --- Bash tool rules ---
+
+  - name: kubectl-readonly
+    cel: |
+      request.cmd == "kubectl" &&
+        request.args.exists(a, a == "get" || a == "describe" || a == "logs" || a == "top" || a == "explain")
+    verdict: ALLOW
+
+  - name: kubectl-apply-pause
+    cel: |
+      request.cmd == "kubectl" &&
+        request.args.exists(a, a == "apply" || a == "create" || a == "delete" || a == "patch" || a == "edit")
+    verdict: PAUSE
+
+  - name: gcx-all
+    cel: request.cmd == "gcx"
+    verdict: ALLOW
+
+  - name: gh-read
+    cel: |
+      request.cmd == "gh" &&
+        request.args.exists(a, a == "pr" || a == "issue" || a == "repo") &&
+        request.args.all(a, !(a == "merge" || a == "delete"))
+    verdict: ALLOW
+
+  - name: gh-pr-create-pause
+    cel: |
+      request.cmd == "gh" &&
+        request.args.exists(a, a == "pr") && request.args.exists(a, a == "create")
+    verdict: PAUSE
+
+  - name: git-push-pause
+    cel: |
+      request.cmd == "git" && request.args.exists(a, a == "push")
+    verdict: PAUSE
+
+  - name: git-local
+    cel: request.cmd == "git"
+    verdict: ALLOW
+
+  - name: safe-tools
+    cel: |
+      request.cmd in ["cat", "ls", "find", "grep", "rg", "jq", "yq", "head", "tail", "wc", "diff", "file", "stat", "tree", "less", "sort", "uniq", "cut", "tr", "awk", "sed", "pwd", "which", "env", "echo", "date", "curl", "wget"]
+    verdict: ALLOW
+
+  - name: language-tools
+    cel: |
+      request.cmd in ["go", "node", "npm", "npx", "python", "pip", "make", "cargo", "rustc"]
+    verdict: ALLOW
+
+  - name: editors
+    cel: |
+      request.cmd in ["nvim", "vim", "vi", "nano", "code"]
+    verdict: ALLOW
+
+  # --- File access rules ---
+
+  - name: block-sensitive-files
+    cel: |
+      request.tool in ["read", "write", "edit"] &&
+        request.path.matches(".*\\.(env|pem|key|p12|pfx|secret|credentials)$")
+    verdict: DENY
+
+  - name: block-sensitive-dirs
+    cel: |
+      request.tool in ["read", "write", "edit"] &&
+        (request.path.contains("/.ssh/") ||
+         request.path.contains("/.aws/") ||
+         request.path.contains("/.config/gcloud/") ||
+         request.path.contains("/.config/gcx/") ||
+         request.path.contains("/.kube/config") ||
+         request.path.contains("/.gnupg/"))
+    verdict: DENY
+
+  - name: allow-file-access
+    description: Dev policy allows reads and writes (except sensitive)
+    cel: |
+      request.tool in ["read", "write", "edit"]
+    verdict: ALLOW
+
+  # --- Default ---
+
+  - name: default-deny
+    verdict: DENY

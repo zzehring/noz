@@ -240,18 +240,22 @@ func resolvePolicyPath(name string) (string, error) {
 		return name, nil
 	}
 
-	// Check policies/ in current directory
-	local := filepath.Join("policies", name+".cel")
-	if _, err := os.Stat(local); err == nil {
-		abs, _ := filepath.Abs(local)
-		return abs, nil
+	// Search order: YAML preferred over CEL, local preferred over global
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join("policies", name+".yaml"),
+		filepath.Join("policies", name+".yml"),
+		filepath.Join("policies", name+".cel"),
+		filepath.Join(home, ".config", "noz", "policies", name+".yaml"),
+		filepath.Join(home, ".config", "noz", "policies", name+".yml"),
+		filepath.Join(home, ".config", "noz", "policies", name+".cel"),
 	}
 
-	// Check ~/.config/noz/policies/
-	home, _ := os.UserHomeDir()
-	global := filepath.Join(home, ".config", "noz", "policies", name+".cel")
-	if _, err := os.Stat(global); err == nil {
-		return global, nil
+	for _, c := range candidates {
+		if _, err := os.Stat(c); err == nil {
+			abs, _ := filepath.Abs(c)
+			return abs, nil
+		}
 	}
 
 	return "", fmt.Errorf("policy %q not found in ./policies/ or ~/.config/noz/policies/", name)

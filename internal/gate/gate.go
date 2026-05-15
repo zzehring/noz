@@ -23,15 +23,30 @@ type Gate struct {
 	rules []Rule
 }
 
-// New creates a Gate from a policy file path. The file contains CEL rule blocks
-// separated by "---" lines. Each block is a CEL expression that returns
-// "ALLOW", "DENY", "PAUSE", or "" (no match, continue to next rule).
+// New creates a Gate from a policy file path. Supports both YAML (.yaml/.yml)
+// and legacy CEL (.cel) formats. YAML is preferred.
 func New(policyPath string) (*Gate, error) {
-	data, err := os.ReadFile(policyPath)
-	if err != nil {
-		return nil, fmt.Errorf("reading policy %s: %w", policyPath, err)
+	ext := filepath.Ext(policyPath)
+	switch ext {
+	case ".yaml", ".yml":
+		return LoadYAML(policyPath)
+	case ".cel":
+		data, err := os.ReadFile(policyPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading policy %s: %w", policyPath, err)
+		}
+		return NewFromSource(string(data))
+	default:
+		// Try YAML first, fall back to CEL
+		if g, err := LoadYAML(policyPath); err == nil {
+			return g, nil
+		}
+		data, err := os.ReadFile(policyPath)
+		if err != nil {
+			return nil, fmt.Errorf("reading policy %s: %w", policyPath, err)
+		}
+		return NewFromSource(string(data))
 	}
-	return NewFromSource(string(data))
 }
 
 // NewFromSource creates a Gate from raw policy source text.
@@ -190,16 +205,25 @@ func splitRules(source string) []ruleBlock {
 	return blocks
 }
 
-// ListPolicies returns the names of .cel files in a directory.
+// ListPolicies returns the names of policy files (.yaml, .yml, .cel) in a directory.
 func ListPolicies(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("reading policies dir %s: %w", dir, err)
 	}
+	seen := make(map[string]bool)
 	var names []string
 	for _, e := range entries {
-		if !e.IsDir() && filepath.Ext(e.Name()) == ".cel" {
-			names = append(names, strings.TrimSuffix(e.Name(), ".cel"))
+		if e.IsDir() {
+			continue
+		}
+		ext := filepath.Ext(e.Name())
+		if ext == ".yaml" || ext == ".yml" || ext == ".cel" {
+			name := strings.TrimSuffix(e.Name(), ext)
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
 		}
 	}
 	return names, nil
