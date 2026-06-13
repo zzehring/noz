@@ -23,6 +23,7 @@ type sessionInfo struct {
 	windows    int
 	lastActive time.Time
 	attached   bool
+	state      string // working | waiting | needs-you (live sessions only)
 }
 
 // defaultMinCategorySize is the minimum number of sessions for a prefix
@@ -138,7 +139,7 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 		if showRepo {
 			repoHdr = "  repo"
 		}
-		fmt.Fprintf(w, "%s    %-*s  win  last%s%s\n", cGray, maxSlug, "", repoHdr, cReset)
+		fmt.Fprintf(w, "%s    %-*s  %-9s  win  last%s%s\n", cGray, maxSlug, "", "state", repoHdr, cReset)
 	}
 
 	// Render
@@ -204,22 +205,29 @@ func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {
 			marker = cGreen + "▶" + cReset
 		}
 
+		stateLabel, stateColor := stateDisplay(s.state)
+		// A blocked session is worth shouting about — flip the marker.
+		if stateLabel == "needs you" {
+			marker = cRed + cBold + "!" + cReset
+		}
+
 		winStr := fmt.Sprintf("%d", s.windows)
 		idleStr := ""
 		if !s.lastActive.IsZero() {
 			idleStr = relativeTime(s.lastActive)
 		}
 
-		fmt.Fprintf(w, "  %s %-*s  %s%-3s%s  %s%-6s%s%s\n",
+		fmt.Fprintf(w, "  %s %-*s  %s%-9s%s  %s%-3s%s  %s%-6s%s%s\n",
 			marker, slugWidth, name,
+			stateColor, stateLabel, cReset,
 			cCyan, winStr, cReset,
 			cYellow, idleStr, cReset,
 			repoStr)
 	} else {
 		marker := cGray + "○" + cReset
-		fmt.Fprintf(w, "  %s %s%-*s%s  %-3s  %-6s%s\n",
+		fmt.Fprintf(w, "  %s %s%-*s%s  %-9s  %-3s  %-6s%s\n",
 			marker, cDim, slugWidth, name, cReset,
-			"", "",
+			"", "", "",
 			repoStr)
 	}
 }
@@ -265,6 +273,7 @@ func discoverSessions() ([]sessionInfo, error) {
 			s.attached = td.attached
 		}
 
+		s.state = claudeState(s)
 		s.category = categorizeSlug(slug)
 		sessions = append(sessions, s)
 	}
@@ -436,6 +445,61 @@ func getTmuxDetails() map[string]tmuxDetail {
 	return details
 }
 
+// workingWindow is how recently a live session must have produced output
+// to count as actively "working" under the activity heuristic. Claude's
+// TUI redraws its spinner/timer ~every second while busy, so a tight
+// window cleanly separates working from waiting-for-input.
+const workingWindow = 20 * time.Second
+
+// claudeStateDir holds optional per-session state files. They're written by
+// Claude Code hooks (if installed) and read here; absent that, ls falls back
+// to the activity heuristic, so this works with no setup at all.
+func claudeStateDir() string {
+	if d := os.Getenv("NOZ_STATE_DIR"); d != "" {
+		return d
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".cache", "noz", "state")
+}
+
+// claudeState returns a coarse activity state for a live session. A cached
+// state file (event-driven, written by hooks) wins when present; otherwise
+// it's derived from recent tmux output. Empty for sessions with no tmux.
+func claudeState(s sessionInfo) string {
+	if !s.hasTmux {
+		return ""
+	}
+	// Authoritative state from hooks, if any.
+	if data, err := os.ReadFile(filepath.Join(claudeStateDir(), s.slug)); err == nil {
+		if st := strings.TrimSpace(string(data)); st != "" {
+			return st
+		}
+	}
+	// Fallback: infer from how recently the session produced output.
+	if s.lastActive.IsZero() {
+		return ""
+	}
+	if time.Since(s.lastActive) < workingWindow {
+		return "working"
+	}
+	return "waiting"
+}
+
+// stateDisplay maps a state word to its label and color. Returns empty
+// strings for unknown/empty states so the column simply stays blank.
+func stateDisplay(state string) (label, color string) {
+	switch state {
+	case "working":
+		return "working", cGreen
+	case "waiting":
+		return "waiting", cYellow
+	case "needs-you", "needs you", "blocked":
+		return "needs you", cRed
+	default:
+		return "", ""
+	}
+}
+
 // tmuxSessions returns the set of active tmux session names. Used by
 // `noz prune` to decide which worktrees still have a live session.
 func tmuxSessions() map[string]bool {
@@ -480,6 +544,7 @@ var (
 	cReset  = "\033[0m"
 	cBold   = "\033[1m"
 	cDim    = "\033[2m"
+	cRed    = "\033[31m"
 	cGreen  = "\033[32m"
 	cYellow = "\033[33m"
 	cCyan   = "\033[36m"
@@ -491,6 +556,7 @@ func initColors() {
 		cReset = ""
 		cBold = ""
 		cDim = ""
+		cRed = ""
 		cGreen = ""
 		cYellow = ""
 		cCyan = ""
