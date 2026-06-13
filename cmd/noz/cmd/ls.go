@@ -436,6 +436,22 @@ func getTmuxDetails() map[string]tmuxDetail {
 	return details
 }
 
+// tmuxSessions returns the set of active tmux session names. Used by
+// `noz prune` to decide which worktrees still have a live session.
+func tmuxSessions() map[string]bool {
+	sessions := make(map[string]bool)
+	out, err := exec.Command("tmux", "ls", "-F", "#S").Output()
+	if err != nil {
+		return sessions
+	}
+	for name := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		if name != "" {
+			sessions[name] = true
+		}
+	}
+	return sessions
+}
+
 // Time formatting
 
 func relativeTime(t time.Time) string {

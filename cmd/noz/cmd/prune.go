@@ -1,0 +1,236 @@
+package cmd
+
+import (
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+)
+
+func newPruneCmd() *cobra.Command {
+	var dryRun bool
+	var maxAge string
+	var all bool
+
+	cmd := &cobra.Command{
+		Use:   "prune",
+		Short: "Remove stale pairing sessions (no tmux, older than threshold)",
+		Long: `Finds worktree directories with no active tmux session and older than
+the age threshold, then removes them.
+
+Dry-run by default — shows what would be removed without deleting.
+Use --force to actually remove.
+
+Examples:
+  noz prune                    # dry-run: show stale sessions (7d default)
+  noz prune --force            # actually remove them
+  noz prune --age 3d --force   # remove sessions older than 3 days
+  noz prune --all --force      # remove ALL sessions without active tmux`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			force := !dryRun
+			return runPrune(cmd, force, maxAge, all)
+		},
+	}
+
+	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "preview only (default true, use --dry-run=false or --force)")
+	cmd.Flags().BoolVar(&all, "all", false, "remove all sessions without active tmux (ignore age)")
+	cmd.Flags().StringVar(&maxAge, "age", "7d", "remove sessions older than this (e.g., 1d, 3d, 7d, 2w)")
+
+	// --force is sugar for --dry-run=false
+	var force bool
+	cmd.Flags().BoolVar(&force, "force", false, "actually remove (same as --dry-run=false)")
+	cmd.PreRun = func(cmd *cobra.Command, args []string) {
+		if cmd.Flags().Changed("force") && force {
+			dryRun = false
+		}
+	}
+
+	return cmd
+}
+
+type staleSession struct {
+	name    string
+	path    string
+	age     time.Duration
+	hasTmux bool
+	size    string
+}
+
+func runPrune(cmd *cobra.Command, force bool, maxAge string, all bool) error {
+	root := nozRoot()
+	sessions := tmuxSessions()
+
+	threshold, err := parseAge(maxAge)
+	if err != nil {
+		return fmt.Errorf("invalid age %q: %w", maxAge, err)
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintln(cmd.OutOrStdout(), "no sessions to prune")
+			return nil
+		}
+		return fmt.Errorf("reading %s: %w", root, err)
+	}
+
+	var stale []staleSession
+	var kept int
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+
+		name := e.Name()
+		path := filepath.Join(root, name)
+		slug := extractSlug(name)
+
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		age := time.Since(info.ModTime())
+		hasTmux := sessions[slug]
+
+		// Skip if tmux session is active
+		if hasTmux {
+			kept++
+			continue
+		}
+
+		// Skip if not old enough (unless --all)
+		if !all && age < threshold {
+			kept++
+			continue
+		}
+
+		size := dirSize(path)
+		stale = append(stale, staleSession{
+			name: name, path: path, age: age, hasTmux: hasTmux, size: size,
+		})
+	}
+
+	// Sort by age descending
+	sort.Slice(stale, func(i, j int) bool {
+		return stale[i].age > stale[j].age
+	})
+
+	w := cmd.OutOrStdout()
+
+	if len(stale) == 0 {
+		fmt.Fprintf(w, "nothing to prune (%d active sessions)\n", kept)
+		return nil
+	}
+
+	// Print what would be / will be removed
+	action := "would remove"
+	if force {
+		action = "removing"
+	}
+
+	var totalRemoved int
+	for _, s := range stale {
+		fmt.Fprintf(w, "  %s %-50s  age: %-8s  size: %s\n", action, s.name, formatAge(s.age), s.size)
+
+		if force {
+			if err := removeSessionDir(s.path, s.name); err != nil {
+				fmt.Fprintf(os.Stderr, "  error removing %s: %v\n", s.name, err)
+			} else {
+				totalRemoved++
+			}
+		}
+	}
+
+	fmt.Fprintln(w)
+	if force {
+		fmt.Fprintf(w, "pruned %d sessions, kept %d\n", totalRemoved, kept)
+	} else {
+		fmt.Fprintf(w, "%d sessions to prune, %d kept (use --force to remove)\n", len(stale), kept)
+	}
+
+	return nil
+}
+
+func removeSessionDir(path, name string) error {
+	slug := extractSlug(name)
+
+	// Try git worktree remove first (cleaner, updates git's worktree list)
+	if err := exec.Command("git", "worktree", "remove", "--force", path).Run(); err != nil {
+		// Fall back to rm -rf for scratch dirs or if git worktree remove fails
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+	}
+
+	// Kill tmux session if somehow still around
+	if tmuxHasSession(slug) {
+		exec.Command("tmux", "kill-session", "-t", slug).Run()
+	}
+
+	return nil
+}
+
+func extractSlug(dirName string) string {
+	// "webapp-review-123" → "review-123"
+	// "scratch-investigate" → "investigate"
+	if strings.HasPrefix(dirName, "scratch-") {
+		return strings.TrimPrefix(dirName, "scratch-")
+	}
+	parts := strings.SplitN(dirName, "-", 2)
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return dirName
+}
+
+func parseAge(s string) (time.Duration, error) {
+	s = strings.TrimSpace(strings.ToLower(s))
+	if strings.HasSuffix(s, "w") {
+		s = strings.TrimSuffix(s, "w")
+		var weeks int
+		if _, err := fmt.Sscanf(s, "%d", &weeks); err != nil {
+			return 0, err
+		}
+		return time.Duration(weeks) * 7 * 24 * time.Hour, nil
+	}
+	if strings.HasSuffix(s, "d") {
+		s = strings.TrimSuffix(s, "d")
+		var days int
+		if _, err := fmt.Sscanf(s, "%d", &days); err != nil {
+			return 0, err
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	// Try Go duration format as fallback
+	return time.ParseDuration(s)
+}
+
+func formatAge(d time.Duration) string {
+	days := int(d.Hours() / 24)
+	if days > 0 {
+		return fmt.Sprintf("%dd", days)
+	}
+	hours := int(d.Hours())
+	if hours > 0 {
+		return fmt.Sprintf("%dh", hours)
+	}
+	return "<1h"
+}
+
+func dirSize(path string) string {
+	out, err := exec.Command("du", "-sh", path).Output()
+	if err != nil {
+		return "?"
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) > 0 {
+		return fields[0]
+	}
+	return "?"
+}
