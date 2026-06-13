@@ -50,12 +50,14 @@ func runSetup(agentName string, remove, projectOnly, dryRun bool) error {
 	switch agentName {
 	case "claude":
 		return setupClaude(remove, projectOnly, dryRun)
+	case "tmux":
+		return setupTmux(remove, dryRun)
 	case "codex":
 		return fmt.Errorf("codex setup not yet implemented")
 	case "gemini":
 		return fmt.Errorf("gemini setup not yet implemented")
 	default:
-		return fmt.Errorf("unknown agent: %s (supported: claude, codex, gemini)", agentName)
+		return fmt.Errorf("unknown agent: %s (supported: claude, tmux, codex, gemini)", agentName)
 	}
 }
 
@@ -86,7 +88,7 @@ func setupClaude(remove, projectOnly, dryRun bool) error {
 		return fmt.Errorf("reading %s: %w", settingsPath, err)
 	}
 	if settings == nil {
-		settings = make(map[string]interface{})
+		settings = make(map[string]any)
 	}
 
 	if remove {
@@ -106,19 +108,19 @@ func setupClaude(remove, projectOnly, dryRun bool) error {
 	}
 
 	// Merge into existing settings
-	hooks, _ := settings["hooks"].(map[string]interface{})
+	hooks, _ := settings["hooks"].(map[string]any)
 	if hooks == nil {
-		hooks = make(map[string]interface{})
+		hooks = make(map[string]any)
 	}
 
 	preToolUse := getOrCreatePreToolUse(hooks)
 
 	for _, th := range toolHooks {
 		hookCmd := fmt.Sprintf("echo \"$CLAUDE_TOOL_INPUT\" | %s gate --tool %s --policy %s", nozBin, th.tool, policyPath)
-		hook := map[string]interface{}{
+		hook := map[string]any{
 			"matcher": th.matcher,
-			"hooks": []interface{}{
-				map[string]interface{}{
+			"hooks": []any{
+				map[string]any{
 					"type":    "command",
 					"command": hookCmd,
 				},
@@ -156,21 +158,21 @@ func setupClaude(remove, projectOnly, dryRun bool) error {
 	return nil
 }
 
-func removeCloudeHooks(settings map[string]interface{}, settingsPath string, dryRun bool) error {
-	hooks, ok := settings["hooks"].(map[string]interface{})
+func removeCloudeHooks(settings map[string]any, settingsPath string, dryRun bool) error {
+	hooks, ok := settings["hooks"].(map[string]any)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "noz: no hooks found in %s\n", settingsPath)
 		return nil
 	}
 
-	preToolUse, ok := hooks["PreToolUse"].([]interface{})
+	preToolUse, ok := hooks["PreToolUse"].([]any)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "noz: no PreToolUse hooks found\n")
 		return nil
 	}
 
 	// Filter out noz hooks
-	var filtered []interface{}
+	var filtered []any
 	removed := 0
 	for _, entry := range preToolUse {
 		if !isNozHook(entry) {
@@ -269,19 +271,19 @@ func claudeSettingsPath(projectOnly bool) string {
 	return filepath.Join(home, ".claude", "settings.json")
 }
 
-func loadJSONFile(path string) (map[string]interface{}, error) {
+func loadJSONFile(path string) (map[string]any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, fmt.Errorf("parsing JSON: %w", err)
 	}
 	return result, nil
 }
 
-func writeJSONFile(path string, data map[string]interface{}) error {
+func writeJSONFile(path string, data map[string]any) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -293,15 +295,15 @@ func writeJSONFile(path string, data map[string]interface{}) error {
 	return os.WriteFile(path, append(out, '\n'), 0644)
 }
 
-func getOrCreatePreToolUse(hooks map[string]interface{}) []interface{} {
-	if existing, ok := hooks["PreToolUse"].([]interface{}); ok {
+func getOrCreatePreToolUse(hooks map[string]any) []any {
+	if existing, ok := hooks["PreToolUse"].([]any); ok {
 		return existing
 	}
-	return []interface{}{}
+	return []any{}
 }
 
 // upsertNozHookByMatcher replaces an existing noz hook with matching matcher, or appends.
-func upsertNozHookByMatcher(preToolUse []interface{}, newHook map[string]interface{}, matcher string) []interface{} {
+func upsertNozHookByMatcher(preToolUse []any, newHook map[string]any, matcher string) []any {
 	for i, entry := range preToolUse {
 		if isNozHookWithMatcher(entry, matcher) {
 			preToolUse[i] = newHook
@@ -311,8 +313,8 @@ func upsertNozHookByMatcher(preToolUse []interface{}, newHook map[string]interfa
 	return append(preToolUse, newHook)
 }
 
-func isNozHookWithMatcher(entry interface{}, matcher string) bool {
-	m, ok := entry.(map[string]interface{})
+func isNozHookWithMatcher(entry any, matcher string) bool {
+	m, ok := entry.(map[string]any)
 	if !ok {
 		return false
 	}
@@ -322,18 +324,101 @@ func isNozHookWithMatcher(entry interface{}, matcher string) bool {
 	return isNozHook(entry)
 }
 
+// noz tmux status bar snippet — appended to tmux.conf.
+const nozTmuxBlock = `
+# --- noz status bar ---
+# Shows noz session context (slug, repo, current command) in tmux status bar.
+# Managed by: noz setup tmux
+set -g status-right '#[fg=cyan]#{?NOZ_SLUG,#{NOZ_SLUG} ,}#[fg=yellow]#{?NOZ_REPO,#{NOZ_REPO} ,}#[fg=default]#{pane_current_command}'
+set -g status-right-length 80
+# prefix + j: fuzzy-jump between noz sessions (runs 'noz sw' in a popup)
+bind-key j display-popup -E -w 60% -h 50% "noz sw"
+# --- end noz ---`
+
+const nozTmuxMarker = "# --- noz status bar ---"
+
+func setupTmux(remove, dryRun bool) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("finding home dir: %w", err)
+	}
+	confPath := filepath.Join(home, ".tmux.conf")
+
+	existing, _ := os.ReadFile(confPath)
+	content := string(existing)
+	hasNoz := strings.Contains(content, nozTmuxMarker)
+
+	if remove {
+		if !hasNoz {
+			fmt.Fprintln(os.Stderr, "noz: no noz block found in ~/.tmux.conf")
+			return nil
+		}
+		start := strings.Index(content, "# --- noz status bar ---")
+		end := strings.Index(content, "# --- end noz ---")
+		if start >= 0 && end >= 0 {
+			end += len("# --- end noz ---")
+			content = content[:start] + content[end:]
+			content = strings.TrimRight(content, "\n") + "\n"
+		}
+		if dryRun {
+			fmt.Fprintln(os.Stderr, "noz: would remove noz block from ~/.tmux.conf")
+			return nil
+		}
+		if err := os.WriteFile(confPath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("writing tmux.conf: %w", err)
+		}
+		fmt.Fprintln(os.Stderr, "noz: removed noz block from ~/.tmux.conf")
+		reloadTmux()
+		return nil
+	}
+
+	if hasNoz {
+		fmt.Fprintln(os.Stderr, "noz: tmux already configured (idempotent, no changes)")
+		return nil
+	}
+
+	if dryRun {
+		fmt.Fprintln(os.Stderr, "noz: would append to ~/.tmux.conf:")
+		fmt.Fprintln(os.Stderr, nozTmuxBlock)
+		return nil
+	}
+
+	f, err := os.OpenFile(confPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("opening tmux.conf: %w", err)
+	}
+	defer f.Close()
+
+	if _, err := f.WriteString("\n" + nozTmuxBlock + "\n"); err != nil {
+		return fmt.Errorf("writing tmux.conf: %w", err)
+	}
+
+	fmt.Fprintln(os.Stderr, "noz: appended status bar config to ~/.tmux.conf")
+	reloadTmux()
+	return nil
+}
+
+func reloadTmux() {
+	home, _ := os.UserHomeDir()
+	if err := exec.Command("tmux", "source-file", filepath.Join(home, ".tmux.conf")).Run(); err != nil {
+		fmt.Fprintln(os.Stderr, "noz: could not reload tmux config (run: tmux source ~/.tmux.conf)")
+	} else {
+		fmt.Fprintln(os.Stderr, "noz: reloaded tmux config")
+	}
+}
+
 // isNozHook checks if a PreToolUse entry is a noz hook.
-func isNozHook(entry interface{}) bool {
-	m, ok := entry.(map[string]interface{})
+func isNozHook(entry any) bool {
+	m, ok := entry.(map[string]any)
 	if !ok {
 		return false
 	}
-	hooks, ok := m["hooks"].([]interface{})
+	hooks, ok := m["hooks"].([]any)
 	if !ok {
 		return false
 	}
 	for _, h := range hooks {
-		hm, ok := h.(map[string]interface{})
+		hm, ok := h.(map[string]any)
 		if !ok {
 			continue
 		}
