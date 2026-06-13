@@ -157,7 +157,27 @@ func runPrune(cmd *cobra.Command, force bool, maxAge string, all bool) error {
 	return nil
 }
 
+// isWithinRoot reports whether path is safely contained inside root. It guards
+// destructive ops so a misconfigured $NOZ_ROOT can never point them outside the
+// worktree tree (empty/"/"/"." roots are always rejected).
+func isWithinRoot(root, path string) bool {
+	root = filepath.Clean(root)
+	if root == "" || root == "/" || root == "." {
+		return false
+	}
+	rel, err := filepath.Rel(root, filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 func removeSessionDir(path, name string) error {
+	// Safety: never remove anything outside the noz worktree root.
+	if !isWithinRoot(nozRoot(), path) {
+		return fmt.Errorf("refusing to remove %q: outside the noz root", path)
+	}
+
 	slug := extractSlug(name)
 
 	// Try git worktree remove first (cleaner, updates git's worktree list)
@@ -179,30 +199,27 @@ func removeSessionDir(path, name string) error {
 func extractSlug(dirName string) string {
 	// "webapp-review-123" → "review-123"
 	// "scratch-investigate" → "investigate"
-	if strings.HasPrefix(dirName, "scratch-") {
-		return strings.TrimPrefix(dirName, "scratch-")
+	if rest, ok := strings.CutPrefix(dirName, "scratch-"); ok {
+		return rest
 	}
-	parts := strings.SplitN(dirName, "-", 2)
-	if len(parts) == 2 {
-		return parts[1]
+	if _, rest, found := strings.Cut(dirName, "-"); found {
+		return rest
 	}
 	return dirName
 }
 
 func parseAge(s string) (time.Duration, error) {
 	s = strings.TrimSpace(strings.ToLower(s))
-	if strings.HasSuffix(s, "w") {
-		s = strings.TrimSuffix(s, "w")
+	if rest, ok := strings.CutSuffix(s, "w"); ok {
 		var weeks int
-		if _, err := fmt.Sscanf(s, "%d", &weeks); err != nil {
+		if _, err := fmt.Sscanf(rest, "%d", &weeks); err != nil {
 			return 0, err
 		}
 		return time.Duration(weeks) * 7 * 24 * time.Hour, nil
 	}
-	if strings.HasSuffix(s, "d") {
-		s = strings.TrimSuffix(s, "d")
+	if rest, ok := strings.CutSuffix(s, "d"); ok {
 		var days int
-		if _, err := fmt.Sscanf(s, "%d", &days); err != nil {
+		if _, err := fmt.Sscanf(rest, "%d", &days); err != nil {
 			return 0, err
 		}
 		return time.Duration(days) * 24 * time.Hour, nil
