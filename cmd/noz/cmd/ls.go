@@ -493,6 +493,19 @@ func stateDisplay(state string) (label, color string) {
 	}
 }
 
+// currentTmuxSession returns the name of the tmux session this process is
+// running inside, or "" if not in tmux. Session names are noz slugs.
+func currentTmuxSession() string {
+	if os.Getenv("TMUX") == "" {
+		return ""
+	}
+	out, err := exec.Command("tmux", "display-message", "-p", "#S").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // tmuxSessionNames lists the names of all active tmux sessions.
 func tmuxSessionNames() []string {
 	out, err := exec.Command("tmux", "ls", "-F", "#S").Output()

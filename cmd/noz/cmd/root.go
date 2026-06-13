@@ -30,6 +30,7 @@ support pre-tool hooks — see 'noz setup' and 'noz gate'.`,
 	// Session management — the core of noz.
 	rootCmd.AddCommand(newPairCmd())
 	rootCmd.AddCommand(newLsCmd())
+	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newSwCmd())
 	rootCmd.AddCommand(newMvCmd())
 	rootCmd.AddCommand(newRmCmd())

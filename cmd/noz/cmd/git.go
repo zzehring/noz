@@ -1,6 +1,19 @@
 package cmd
 
-import "strings"
+import (
+	"os/exec"
+	"strings"
+)
+
+// gitBranch returns the current branch name in the working directory, or ""
+// if not in a repo. Returns "HEAD" when in a detached-HEAD state.
+func gitBranch() string {
+	out, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
 
 // worktreeMainRepo parses the content of a git worktree's `.git` pointer file
 // ("gitdir: /path/to/repo/.git/worktrees/<name>") and returns the main
