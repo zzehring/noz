@@ -30,9 +30,12 @@ func NewRootCmd() *cobra.Command {
 
 	rootCmd.AddCommand(newGateCmd())
 	rootCmd.AddCommand(newPolicyCmd())
+	rootCmd.AddCommand(newProfileCmd())
 	rootCmd.AddCommand(newPairCmd())
+	rootCmd.AddCommand(newSwCmd())
 	rootCmd.AddCommand(newLsCmd())
 	rootCmd.AddCommand(newRmCmd())
+	rootCmd.AddCommand(newMvCmd())
 	rootCmd.AddCommand(newSetupCmd())
 
 	return rootCmd
