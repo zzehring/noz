@@ -340,19 +340,11 @@ func linkNozDir(root, repo, wtDir string) {
 
 // resolveMainGitDir finds the main repo's .git directory from a worktree.
 func resolveMainGitDir(wtDir string) string {
-	gitPath := filepath.Join(wtDir, ".git")
-	data, err := os.ReadFile(gitPath)
+	data, err := os.ReadFile(filepath.Join(wtDir, ".git"))
 	if err != nil {
 		return "" // .git is a dir (not a worktree) or doesn't exist
 	}
-	content := strings.TrimSpace(string(data))
-	gitdir, ok := strings.CutPrefix(content, "gitdir: ")
-	if !ok {
-		return ""
-	}
-	// gitdir: /path/to/repo/.git/worktrees/<name>
-	// We want: /path/to/repo/.git
-	if base, _, found := strings.Cut(gitdir, "/.git/worktrees/"); found {
+	if base := worktreeMainRepo(string(data)); base != "" {
 		return base + "/.git"
 	}
 	return ""
@@ -389,14 +381,10 @@ func repoName() (string, error) {
 	}
 	topLevel := strings.TrimSpace(string(out))
 
-	// If we're in a worktree, resolve the main repo name from .git file
-	gitPath := filepath.Join(topLevel, ".git")
-	if data, err := os.ReadFile(gitPath); err == nil {
-		content := strings.TrimSpace(string(data))
-		if gitdir, ok := strings.CutPrefix(content, "gitdir: "); ok {
-			if base, _, found := strings.Cut(gitdir, "/.git/worktrees/"); found {
-				return filepath.Base(base), nil
-			}
+	// If we're in a worktree, resolve the main repo name from its .git file.
+	if data, err := os.ReadFile(filepath.Join(topLevel, ".git")); err == nil {
+		if base := worktreeMainRepo(string(data)); base != "" {
+			return filepath.Base(base), nil
 		}
 	}
 

@@ -48,6 +48,8 @@ Designed to be called from agent pre-execution hooks:
 	cmd.Flags().StringVar(&inputFormat, "input-format", "claude", "Input format: claude, codex, gemini")
 	cmd.Flags().StringVar(&tool, "tool", "bash", "Tool type being gated: bash, read, write, edit, glob, grep")
 	cmd.Flags().StringVar(&guardLog, "guard-log", "", "Path to append guard tower audit log")
+	cmd.Flags().StringVar(&policyName, "policy", "", "CEL policy name or path")
+	cmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
 
 	return cmd
 }
@@ -183,7 +185,7 @@ func evalAndReport(g *gate.Gate, req *gate.CommandRequest, display, guardLog str
 }
 
 // readToolInput reads the raw JSON tool input from env var or stdin.
-func readToolInput(format string) (map[string]interface{}, error) {
+func readToolInput(format string) (map[string]any, error) {
 	var raw string
 
 	if envInput := os.Getenv("CLAUDE_TOOL_INPUT"); envInput != "" {
@@ -200,7 +202,7 @@ func readToolInput(format string) (map[string]interface{}, error) {
 		return nil, nil
 	}
 
-	var toolInput map[string]interface{}
+	var toolInput map[string]any
 	if err := json.Unmarshal([]byte(raw), &toolInput); err != nil {
 		return nil, fmt.Errorf("parsing tool input: %w", err)
 	}
@@ -226,7 +228,7 @@ func extractCommand(format, tool string) (string, error) {
 }
 
 // extractPath gets the file path from a tool input JSON.
-func extractPath(toolInput map[string]interface{}) string {
+func extractPath(toolInput map[string]any) string {
 	// Claude Code uses "file_path" for Read/Write/Edit
 	if p, ok := toolInput["file_path"].(string); ok {
 		return p

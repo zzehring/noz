@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"os/exec"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -15,14 +14,9 @@ func completeTmuxSessions(cmd *cobra.Command, args []string, toComplete string) 
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
 
-	out, err := exec.Command("tmux", "ls", "-F", "#S").Output()
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-
 	var sessions []string
-	for _, name := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if name != "" && strings.HasPrefix(name, toComplete) {
+	for _, name := range tmuxSessionNames() {
+		if strings.HasPrefix(name, toComplete) {
 			sessions = append(sessions, name)
 		}
 	}

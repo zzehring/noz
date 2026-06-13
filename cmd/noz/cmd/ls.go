@@ -297,17 +297,10 @@ func detectRepo(dir, name string) (repo, slug string) {
 		return "", slug
 	}
 
-	content := strings.TrimSpace(string(data))
-	gitdir, ok := strings.CutPrefix(content, "gitdir: ")
-	if !ok {
+	base := worktreeMainRepo(string(data))
+	if base == "" {
 		return "", slug
 	}
-
-	base, _, found := strings.Cut(gitdir, "/.git/worktrees/")
-	if !found {
-		return "", slug
-	}
-
 	repo = filepath.Base(base)
 	slug = strings.TrimPrefix(name, repo+"-")
 	return repo, slug
@@ -500,20 +493,29 @@ func stateDisplay(state string) (label, color string) {
 	}
 }
 
-// tmuxSessions returns the set of active tmux session names. Used by
-// `noz prune` to decide which worktrees still have a live session.
-func tmuxSessions() map[string]bool {
-	sessions := make(map[string]bool)
+// tmuxSessionNames lists the names of all active tmux sessions.
+func tmuxSessionNames() []string {
 	out, err := exec.Command("tmux", "ls", "-F", "#S").Output()
 	if err != nil {
-		return sessions
+		return nil
 	}
+	var names []string
 	for name := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		if name != "" {
-			sessions[name] = true
+			names = append(names, name)
 		}
 	}
-	return sessions
+	return names
+}
+
+// tmuxSessions returns active tmux session names as a set. Used by
+// `noz prune` to decide which worktrees still have a live session.
+func tmuxSessions() map[string]bool {
+	set := make(map[string]bool)
+	for _, name := range tmuxSessionNames() {
+		set[name] = true
+	}
+	return set
 }
 
 // Time formatting

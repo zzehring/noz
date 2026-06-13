@@ -42,6 +42,8 @@ Examples:
 	cmd.Flags().BoolVar(&remove, "remove", false, "Remove noz hooks from agent config")
 	cmd.Flags().BoolVar(&projectOnly, "project-only", false, "Only configure for current project (.claude/settings.json)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without writing")
+	cmd.Flags().StringVar(&policyName, "policy", "", "CEL policy name or path")
+	cmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
 
 	return cmd
 }
@@ -92,7 +94,7 @@ func setupClaude(remove, projectOnly, dryRun bool) error {
 	}
 
 	if remove {
-		return removeCloudeHooks(settings, settingsPath, dryRun)
+		return removeClaudeHooks(settings, settingsPath, dryRun)
 	}
 
 	// Build hooks for all tool types
@@ -158,7 +160,7 @@ func setupClaude(remove, projectOnly, dryRun bool) error {
 	return nil
 }
 
-func removeCloudeHooks(settings map[string]any, settingsPath string, dryRun bool) error {
+func removeClaudeHooks(settings map[string]any, settingsPath string, dryRun bool) error {
 	hooks, ok := settings["hooks"].(map[string]any)
 	if !ok {
 		fmt.Fprintf(os.Stderr, "noz: no hooks found in %s\n", settingsPath)
