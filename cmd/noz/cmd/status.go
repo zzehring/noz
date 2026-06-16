@@ -15,6 +15,7 @@ type statusInfo struct {
 	Slug       string `json:"slug,omitempty"`
 	Repo       string `json:"repo,omitempty"`
 	Branch     string `json:"branch,omitempty"`
+	Agent      string `json:"agent,omitempty"`
 	State      string `json:"state,omitempty"`
 	Windows    int    `json:"windows,omitempty"`
 	Attached   bool   `json:"attached"`
@@ -51,6 +52,7 @@ func runStatus(cmd *cobra.Command, jsonOut bool) error {
 		td := getTmuxDetails()[slug]
 		info.InSession = true
 		info.Slug = slug
+		info.Agent = td.agent
 		info.Windows = td.windows
 		info.Attached = td.attached
 		if !td.lastActive.IsZero() {
@@ -91,6 +93,9 @@ func runStatus(cmd *cobra.Command, jsonOut bool) error {
 		fmt.Fprintf(w, "  repo    %s\n", repo)
 	}
 	fmt.Fprintf(w, "  branch  %s\n", branchDisplay(branch))
+	if info.Agent != "" {
+		fmt.Fprintf(w, "  agent   %s\n", info.Agent)
+	}
 	last := info.LastActive
 	if last == "" {
 		last = "?"

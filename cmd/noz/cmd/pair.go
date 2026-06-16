@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/zzehring/nozey/internal/agent"
 )
 
 func newPairCmd() *cobra.Command {
@@ -17,21 +18,23 @@ func newPairCmd() *cobra.Command {
 	var noRepo bool
 	var depth int
 	var profile string
+	var agentName string
 
 	cmd := &cobra.Command{
 		Use:   "pair <slug>",
-		Short: "Start a pairing session (worktree + tmux + CEL gate)",
-		Long: `Creates a workspace and drops you into a tmux session with the noz
-CEL gate active. If you're in a git repo, creates a worktree. Otherwise
-creates a scratch directory.
+		Short: "Start a pairing session (git worktree + tmux)",
+		Long: `Creates a workspace and drops you into a tmux session. In a git repo it
+creates a worktree; otherwise a scratch directory. If you're already inside
+tmux it switches to the session instead of nesting.
 
 Reuses existing sessions — if the tmux session already exists, attaches to it.
 
 Examples:
-  noz pair feature-auth        # worktree + tmux (like cw)
-  noz pair --pr 456            # PR review (like cw-pr)
-  noz pair investigate         # scratch dir (no repo)
-  noz pair feature-auth main   # worktree from specific base branch`,
+  noz pair feature-auth          # worktree + tmux
+  noz pair --pr 456              # PR review (shallow, 'review' profile)
+  noz pair investigate           # scratch dir (no repo)
+  noz pair feature-auth main     # worktree from a specific base branch
+  noz pair bug-123 --agent claude  # open the agent in a window`,
 		Args:              cobra.RangeArgs(0, 2),
 		ValidArgsFunction: completeTmuxSessions,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -46,7 +49,7 @@ Examples:
 				if profile == "" {
 					profile = "review" // auto-select for PR sessions
 				}
-				return runPairPR(prNumber, depth, profile)
+				return runPairPR(prNumber, depth, profile, agentName)
 			}
 
 			slug = args[0]
@@ -58,9 +61,9 @@ Examples:
 			}
 
 			if noRepo || !inGitRepo() {
-				return runPairScratch(slug)
+				return runPairScratch(slug, agentName)
 			}
-			return runPairWorktree(slug, base, profile)
+			return runPairWorktree(slug, base, profile, agentName)
 		},
 	}
 
@@ -70,11 +73,36 @@ Examples:
 	cmd.Flags().IntVar(&depth, "depth", 1, "git fetch depth for PR reviews (0 = full history)")
 	cmd.Flags().StringVar(&profile, "profile", "", "apply a session profile (noz profile list to see available)")
 	cmd.RegisterFlagCompletionFunc("profile", completeProfiles)
+	cmd.Flags().StringVar(&agentName, "agent", "", "open a coding agent in a window (claude, opencode, codex, gemini, pi)")
+	cmd.RegisterFlagCompletionFunc("agent", completeAgents)
 
 	return cmd
 }
 
-func runPairWorktree(slug, baseBranch, profile string) error {
+// agentWindow returns a tmux window spec that launches the named agent, or
+// (zero, false, nil) when name is empty. Errors on an unknown agent.
+func agentWindow(name string) (profileWindow, bool, error) {
+	if name == "" {
+		return profileWindow{}, false, nil
+	}
+	a, ok := agent.Lookup(name)
+	if !ok {
+		return profileWindow{}, false, fmt.Errorf("unknown agent %q (known: %s)", name, strings.Join(agent.Names(), ", "))
+	}
+	return profileWindow{Name: a.Name, Cmd: strings.Join(a.Launch, " ")}, true, nil
+}
+
+func completeAgents(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	var matches []string
+	for _, n := range agent.Names() {
+		if strings.HasPrefix(n, toComplete) {
+			matches = append(matches, n)
+		}
+	}
+	return matches, cobra.ShellCompDirectiveNoFileComp
+}
+
+func runPairWorktree(slug, baseBranch, profile, agentName string) error {
 	repo, err := repoName()
 	if err != nil {
 		return err
@@ -115,10 +143,18 @@ func runPairWorktree(slug, baseBranch, profile string) error {
 		windows = w
 	}
 
+	aw, ok, err := agentWindow(agentName)
+	if err != nil {
+		return err
+	}
+	if ok {
+		windows = append(windows, aw)
+	}
+
 	return tmuxSession(slug, wtDir, windows)
 }
 
-func runPairPR(prNumber string, depth int, profile string) error {
+func runPairPR(prNumber string, depth int, profile, agentName string) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return fmt.Errorf("gh CLI not found (needed for --pr)")
 	}
@@ -171,11 +207,19 @@ func runPairPR(prNumber string, depth int, profile string) error {
 		}
 	}
 
+	aw, ok, err := agentWindow(agentName)
+	if err != nil {
+		return err
+	}
+	if ok {
+		windows = append(windows, aw)
+	}
+
 	linkNozDir(root, repo, wtDir)
 	return tmuxSession(slug, wtDir, windows)
 }
 
-func runPairScratch(slug string) error {
+func runPairScratch(slug, agentName string) error {
 	root := nozRoot()
 	dir := filepath.Join(root, "scratch-"+slug)
 
@@ -189,7 +233,14 @@ func runPairScratch(slug string) error {
 		fmt.Fprintf(os.Stderr, "noz: reusing scratch workspace at %s\n", dir)
 	}
 
-	return tmuxSession(slug, dir, nil)
+	var windows []profileWindow
+	if aw, ok, err := agentWindow(agentName); err != nil {
+		return err
+	} else if ok {
+		windows = append(windows, aw)
+	}
+
+	return tmuxSession(slug, dir, windows)
 }
 
 // tmuxSession creates, attaches, or switches to a tmux session.

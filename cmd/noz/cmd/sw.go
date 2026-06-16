@@ -89,11 +89,17 @@ func fzfPick(sessions []sessionInfo) (string, error) {
 
 	var b strings.Builder
 	for _, s := range sessions {
-		last := ""
-		if !s.lastActive.IsZero() {
-			last = relativeTime(s.lastActive)
+		meta := s.agent
+		if s.state != "" {
+			if meta != "" {
+				meta += " "
+			}
+			meta += s.state
 		}
-		display := fmt.Sprintf("%-*s  %-16s  %s", maxSlug, s.slug, s.repo, last)
+		if !s.lastActive.IsZero() {
+			meta = strings.TrimSpace(meta + "  " + relativeTime(s.lastActive))
+		}
+		display := fmt.Sprintf("%-*s  %-16s  %s", maxSlug, s.slug, s.repo, meta)
 		fmt.Fprintf(&b, "%s\t%s\n", s.slug, display)
 	}
 

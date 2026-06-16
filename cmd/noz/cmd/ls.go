@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zzehring/nozey/internal/agent"
 )
 
 type sessionInfo struct {
@@ -23,6 +24,7 @@ type sessionInfo struct {
 	windows    int
 	lastActive time.Time
 	attached   bool
+	agent      string // detected coding agent (claude, opencode, ...), or ""
 	state      string // working | waiting | needs-you (live sessions only)
 }
 
@@ -271,6 +273,7 @@ func discoverSessions() ([]sessionInfo, error) {
 			s.windows = td.windows
 			s.lastActive = td.lastActive
 			s.attached = td.attached
+			s.agent = td.agent
 		}
 
 		s.state = claudeState(s)
@@ -403,6 +406,7 @@ type tmuxDetail struct {
 	windows    int
 	lastActive time.Time
 	attached   bool
+	agent      string // detected coding agent (claude, opencode, ...), or ""
 }
 
 func getTmuxDetails() map[string]tmuxDetail {
@@ -435,7 +439,31 @@ func getTmuxDetails() map[string]tmuxDetail {
 		}
 	}
 
+	detectAgents(details)
 	return details
+}
+
+// detectAgents scans every pane's current command and tags each session with
+// the coding agent running in it (first match wins). Best-effort.
+func detectAgents(details map[string]tmuxDetail) {
+	out, err := exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name}\t#{pane_current_command}").Output()
+	if err != nil {
+		return
+	}
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		name, cmd, ok := strings.Cut(line, "\t")
+		if !ok {
+			continue
+		}
+		d, known := details[name]
+		if !known || d.agent != "" {
+			continue
+		}
+		if ag := agent.Detect(cmd); ag != "" {
+			d.agent = ag
+			details[name] = d
+		}
+	}
 }
 
 // workingWindow is how recently a live session must have produced output
