@@ -34,6 +34,7 @@ support pre-tool hooks — see 'noz setup' and 'noz gate'.`,
 	rootCmd.AddCommand(newSwCmd())
 	rootCmd.AddCommand(newMvCmd())
 	rootCmd.AddCommand(newRmCmd())
+	rootCmd.AddCommand(newRestoreCmd())
 	rootCmd.AddCommand(newPruneCmd())
 	rootCmd.AddCommand(newProfileCmd())
 	rootCmd.AddCommand(newSetupCmd())

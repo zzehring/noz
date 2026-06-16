@@ -281,6 +281,16 @@ func discoverSessions() ([]sessionInfo, error) {
 		sessions = append(sessions, s)
 	}
 
+	// Keep the restore manifest fresh with the current live set (no-op when
+	// nothing is live, so a post-reboot scan won't erase it).
+	var live []string
+	for _, s := range sessions {
+		if s.hasTmux {
+			live = append(live, s.slug)
+		}
+	}
+	saveLiveManifest(live)
+
 	return sessions, nil
 }
 
