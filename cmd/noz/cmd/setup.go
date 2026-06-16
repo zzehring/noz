@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/zzehring/nozey/internal/agent"
 )
 
 func newSetupCmd() *cobra.Command {
@@ -17,18 +18,21 @@ func newSetupCmd() *cobra.Command {
 	var dryRun bool
 
 	cmd := &cobra.Command{
-		Use:   "setup [agent]",
-		Short: "Configure agent hooks to use the noz CEL gate",
-		Long: `Auto-configures pre-execution hooks for coding agents so every command
-is evaluated against your CEL policy.
+		Use:   "setup [target]",
+		Short: "Configure editor/agent integrations",
+		Long: `Set up an integration target:
 
-Supported agents: claude, codex, gemini
+  tmux     prints a status-bar + jump-key snippet to add to ~/.tmux.conf
+  claude   installs PreToolUse gate hooks into ~/.claude/settings.json
+
+Other agents (opencode, codex, gemini, pi) are known to noz for launch and
+detection, but gate hooks aren't implemented for them yet.
 
 Examples:
-  noz setup claude --policy readonly          # global hooks
-  noz setup claude --policy dev --project-only  # this repo only
-  noz setup claude --remove                   # undo
-  noz setup --dry-run                         # preview only`,
+  noz setup tmux                               # print tmux snippet
+  noz setup claude --policy readonly           # global gate hooks
+  noz setup claude --policy dev --project-only # this repo only
+  noz setup claude --remove                    # undo`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			agentName := "claude"
@@ -49,18 +53,17 @@ Examples:
 }
 
 func runSetup(agentName string, remove, projectOnly, dryRun bool) error {
-	switch agentName {
-	case "claude":
-		return setupClaude(remove, projectOnly, dryRun)
-	case "tmux":
+	if agentName == "tmux" {
 		return setupTmux(remove)
-	case "codex":
-		return fmt.Errorf("codex setup not yet implemented")
-	case "gemini":
-		return fmt.Errorf("gemini setup not yet implemented")
-	default:
-		return fmt.Errorf("unknown agent: %s (supported: claude, tmux, codex, gemini)", agentName)
 	}
+	a, ok := agent.Lookup(agentName)
+	if !ok {
+		return fmt.Errorf("unknown agent %q (known: %s; or 'tmux')", agentName, strings.Join(agent.Names(), ", "))
+	}
+	if a.Name == "claude" {
+		return setupClaude(remove, projectOnly, dryRun)
+	}
+	return fmt.Errorf("gate hooks for %q aren't implemented yet — noz can launch and detect it, but not gate it", a.Name)
 }
 
 func setupClaude(remove, projectOnly, dryRun bool) error {
