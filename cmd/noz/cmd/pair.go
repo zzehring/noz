@@ -119,9 +119,17 @@ func runPairWorktree(slug, baseBranch, profile, agentName string) error {
 	if dirExists(wtDir) {
 		fmt.Fprintf(os.Stderr, "noz: worktree exists at %s, reusing\n", wtDir)
 	} else {
-		args := []string{"worktree", "add", wtDir, "-b", slug}
-		if baseBranch != "" {
-			args = append(args, baseBranch)
+		var args []string
+		if branchExists(slug) {
+			// Branch already exists (e.g. `noz rm` kept it) — check it out
+			// rather than failing on `-b`.
+			args = []string{"worktree", "add", wtDir, slug}
+			fmt.Fprintf(os.Stderr, "noz: reusing existing branch %s\n", slug)
+		} else {
+			args = []string{"worktree", "add", wtDir, "-b", slug}
+			if baseBranch != "" {
+				args = append(args, baseBranch)
+			}
 		}
 		if err := runGit(args...); err != nil {
 			return fmt.Errorf("creating worktree: %w", err)

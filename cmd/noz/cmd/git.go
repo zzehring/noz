@@ -5,6 +5,11 @@ import (
 	"strings"
 )
 
+// branchExists reports whether a local branch with the given name exists.
+func branchExists(name string) bool {
+	return exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+name).Run() == nil
+}
+
 // gitBranch returns the current branch name in the working directory, or ""
 // if not in a repo. Returns "HEAD" when in a detached-HEAD state.
 func gitBranch() string {
