@@ -156,6 +156,10 @@ func runPairWorktree(slug, baseBranch, profile, agentName string) error {
 		return err
 	}
 
+	if agentName == "" && !tmuxHasSession(slug) && hasClaudeHistory(wtDir) {
+		resumeHint()
+	}
+
 	return tmuxSession(slug, wtDir, primary, windows)
 }
 
@@ -217,6 +221,10 @@ func runPairPR(prNumber string, depth int, profile, agentName string) error {
 		return err
 	}
 
+	if agentName == "" && !tmuxHasSession(slug) && hasClaudeHistory(wtDir) {
+		resumeHint()
+	}
+
 	linkNozDir(root, repo, wtDir)
 	return tmuxSession(slug, wtDir, primary, windows)
 }
@@ -238,6 +246,10 @@ func runPairScratch(slug, agentName string) error {
 	primary, err := agentPrimary(agentName)
 	if err != nil {
 		return err
+	}
+
+	if agentName == "" && !tmuxHasSession(slug) && hasClaudeHistory(dir) {
+		resumeHint()
 	}
 
 	return tmuxSession(slug, dir, primary, nil)
@@ -475,4 +487,43 @@ func nozRoot() string {
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// encodeClaudeProject maps a worktree path to Claude Code's per-project
+// transcript directory name — it replaces path separators with '-'.
+func encodeClaudeProject(absDir string) string {
+	return strings.ReplaceAll(absDir, "/", "-")
+}
+
+// hasClaudeHistory reports whether Claude Code has a saved conversation for the
+// given dir (a .jsonl transcript under ~/.claude/projects/<encoded>). Best
+// effort: a miss just means no resume hint is shown.
+func hasClaudeHistory(dir string) bool {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		abs = dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	pd := filepath.Join(home, ".claude", "projects", encodeClaudeProject(abs))
+	entries, err := os.ReadDir(pd)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
+			return true
+		}
+	}
+	return false
+}
+
+// resumeHint nudges the user to resume a prior Claude conversation rather than
+// start fresh, when entering a session that has history but no agent running.
+func resumeHint() {
+	fmt.Fprintln(os.Stderr, "noz: a previous Claude conversation exists here —")
+	fmt.Fprintln(os.Stderr, "noz:   resume the latest:  claude --continue")
+	fmt.Fprintln(os.Stderr, "noz:   or pick one:        claude --resume")
 }

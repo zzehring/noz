@@ -73,6 +73,15 @@ func runSw(cmd *cobra.Command, filter string) error {
 		return nil // user cancelled
 	}
 
+	// If the picked session has no agent running (e.g. it was reaped) but has
+	// prior Claude history, nudge to resume rather than start fresh.
+	for _, s := range sessions {
+		if s.slug == slug && s.agent == "" && hasClaudeHistory(s.dir) {
+			resumeHint()
+			break
+		}
+	}
+
 	return switchToTmux(slug)
 }
 
