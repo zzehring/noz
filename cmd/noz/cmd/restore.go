@@ -89,8 +89,9 @@ func runRestore(cmd *cobra.Command, filter string) error {
 }
 
 // createDetachedSession creates a tagged tmux session without attaching.
+// Window 0 is left unnamed so tmux auto-renames it to its running command.
 func createDetachedSession(tmuxBin, slug, dir, repo string) error {
-	c := exec.Command(tmuxBin, "new", "-d", "-s", slug, "-c", dir, "-n", slug)
+	c := exec.Command(tmuxBin, "new", "-d", "-s", slug, "-c", dir)
 	c.Env = append(os.Environ(), "NOZ_SLUG="+slug, "NOZ_REPO="+repo)
 	if err := c.Run(); err != nil {
 		return err

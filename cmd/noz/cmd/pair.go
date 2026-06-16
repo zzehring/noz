@@ -79,17 +79,17 @@ Examples:
 	return cmd
 }
 
-// agentWindow returns a tmux window spec that launches the named agent, or
-// (zero, false, nil) when name is empty. Errors on an unknown agent.
-func agentWindow(name string) (profileWindow, bool, error) {
+// agentPrimary returns window 0's spec that launches the named agent, or nil
+// when name is empty. Errors on an unknown agent.
+func agentPrimary(name string) (*profileWindow, error) {
 	if name == "" {
-		return profileWindow{}, false, nil
+		return nil, nil
 	}
 	a, ok := agent.Lookup(name)
 	if !ok {
-		return profileWindow{}, false, fmt.Errorf("unknown agent %q (known: %s)", name, strings.Join(agent.Names(), ", "))
+		return nil, fmt.Errorf("unknown agent %q (known: %s)", name, strings.Join(agent.Names(), ", "))
 	}
-	return profileWindow{Name: a.Name, Cmd: strings.Join(a.Launch, " ")}, true, nil
+	return &profileWindow{Name: a.Name, Cmd: strings.Join(a.Launch, " ")}, nil
 }
 
 func completeAgents(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -143,15 +143,12 @@ func runPairWorktree(slug, baseBranch, profile, agentName string) error {
 		windows = w
 	}
 
-	aw, ok, err := agentWindow(agentName)
+	primary, err := agentPrimary(agentName)
 	if err != nil {
 		return err
 	}
-	if ok {
-		windows = append(windows, aw)
-	}
 
-	return tmuxSession(slug, wtDir, windows)
+	return tmuxSession(slug, wtDir, primary, windows)
 }
 
 func runPairPR(prNumber string, depth int, profile, agentName string) error {
@@ -207,16 +204,13 @@ func runPairPR(prNumber string, depth int, profile, agentName string) error {
 		}
 	}
 
-	aw, ok, err := agentWindow(agentName)
+	primary, err := agentPrimary(agentName)
 	if err != nil {
 		return err
 	}
-	if ok {
-		windows = append(windows, aw)
-	}
 
 	linkNozDir(root, repo, wtDir)
-	return tmuxSession(slug, wtDir, windows)
+	return tmuxSession(slug, wtDir, primary, windows)
 }
 
 func runPairScratch(slug, agentName string) error {
@@ -233,21 +227,23 @@ func runPairScratch(slug, agentName string) error {
 		fmt.Fprintf(os.Stderr, "noz: reusing scratch workspace at %s\n", dir)
 	}
 
-	var windows []profileWindow
-	if aw, ok, err := agentWindow(agentName); err != nil {
+	primary, err := agentPrimary(agentName)
+	if err != nil {
 		return err
-	} else if ok {
-		windows = append(windows, aw)
 	}
 
-	return tmuxSession(slug, dir, windows)
+	return tmuxSession(slug, dir, primary, nil)
 }
 
 // tmuxSession creates, attaches, or switches to a tmux session.
 // If already inside tmux, switches client instead of nesting.
 // Tags the session with NOZ_SLUG and NOZ_REPO env vars.
-// On creation, opens any profile-declared windows alongside the shell.
-func tmuxSession(name, dir string, windows []profileWindow) error {
+//
+// Window 0 runs `primary` (e.g. the chosen agent) named after it; when
+// primary is nil it's a plain shell left unnamed so tmux auto-renames it to
+// whatever's running — never the redundant session name. Extra profile
+// windows open alongside.
+func tmuxSession(name, dir string, primary *profileWindow, windows []profileWindow) error {
 	tmuxBin, err := exec.LookPath("tmux")
 	if err != nil {
 		return fmt.Errorf("tmux not found")
@@ -280,9 +276,20 @@ func tmuxSession(name, dir string, windows []profileWindow) error {
 		return cmd.Run()
 	}
 
-	// Create the session detached (shell window), capturing its window id so
-	// we can return focus there regardless of the user's base-index.
-	create := exec.Command(tmuxBin, "new", "-d", "-P", "-F", "#{window_id}", "-s", name, "-c", dir, "-n", name)
+	// Create the session detached, capturing window 0's id so we can return
+	// focus there regardless of the user's base-index. Window 0 runs the
+	// primary command (the agent) if given, named after it; otherwise it's a
+	// shell left unnamed so tmux auto-renames it to whatever's running.
+	args := []string{"new", "-d", "-P", "-F", "#{window_id}", "-s", name, "-c", dir}
+	if primary != nil {
+		if primary.Name != "" {
+			args = append(args, "-n", primary.Name)
+		}
+		if primary.Cmd != "" {
+			args = append(args, primary.Cmd)
+		}
+	}
+	create := exec.Command(tmuxBin, args...)
 	create.Env = append(os.Environ(), "NOZ_SLUG="+name, "NOZ_REPO="+repo)
 	out, err := create.Output()
 	if err != nil {
