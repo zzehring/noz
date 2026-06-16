@@ -17,6 +17,7 @@ type statusInfo struct {
 	Branch     string `json:"branch,omitempty"`
 	Agent      string `json:"agent,omitempty"`
 	State      string `json:"state,omitempty"`
+	MemKiB     int    `json:"mem_kib,omitempty"`
 	Windows    int    `json:"windows,omitempty"`
 	Attached   bool   `json:"attached"`
 	LastActive string `json:"last_active,omitempty"`
@@ -53,6 +54,7 @@ func runStatus(cmd *cobra.Command, jsonOut bool) error {
 		info.InSession = true
 		info.Slug = slug
 		info.Agent = td.agent
+		info.MemKiB = td.memKiB
 		info.Windows = td.windows
 		info.Attached = td.attached
 		if !td.lastActive.IsZero() {
@@ -95,6 +97,9 @@ func runStatus(cmd *cobra.Command, jsonOut bool) error {
 	fmt.Fprintf(w, "  branch  %s\n", branchDisplay(branch))
 	if info.Agent != "" {
 		fmt.Fprintf(w, "  agent   %s\n", info.Agent)
+	}
+	if m := humanMem(info.MemKiB); m != "" {
+		fmt.Fprintf(w, "  mem     %s (resident; excludes swapped/compressed)\n", m)
 	}
 	last := info.LastActive
 	if last == "" {

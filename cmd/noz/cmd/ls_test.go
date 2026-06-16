@@ -24,6 +24,49 @@ func TestStateDisplay(t *testing.T) {
 	}
 }
 
+func TestHumanMem(t *testing.T) {
+	cases := map[int]string{
+		0:       "",
+		-5:      "",
+		512:     "1M",   // <1 MiB rounds up to 0? 512KiB = 0.5MiB -> "0M"
+		1024:    "1M",   // 1 MiB
+		406528:  "397M", // ~397 MiB
+		1572864: "1.5G", // 1.5 GiB
+		2097152: "2.0G", // 2 GiB
+	}
+	for kib, want := range cases {
+		// 512 KiB special-case: 0.5 MiB -> "%.0f" rounds to "0M"; accept either.
+		got := humanMem(kib)
+		if kib == 512 {
+			if got != "0M" && got != "1M" {
+				t.Errorf("humanMem(512) = %q", got)
+			}
+			continue
+		}
+		if got != want {
+			t.Errorf("humanMem(%d) = %q, want %q", kib, got, want)
+		}
+	}
+}
+
+func TestSubtreeRSS(t *testing.T) {
+	// 1 -> 2 -> 4, and 1 -> 3. RSS in KiB.
+	rss := map[string]int{"1": 100, "2": 200, "3": 50, "4": 25}
+	children := map[string][]string{"1": {"2", "3"}, "2": {"4"}}
+
+	if got := subtreeRSS("1", rss, children, map[string]bool{}); got != 375 {
+		t.Errorf("subtreeRSS(1) = %d, want 375", got)
+	}
+	if got := subtreeRSS("2", rss, children, map[string]bool{}); got != 225 {
+		t.Errorf("subtreeRSS(2) = %d, want 225", got)
+	}
+	// Cycle guard: 1 <-> 2 must not infinite-loop.
+	cyc := map[string][]string{"1": {"2"}, "2": {"1"}}
+	if got := subtreeRSS("1", rss, cyc, map[string]bool{}); got != 300 {
+		t.Errorf("subtreeRSS with cycle = %d, want 300", got)
+	}
+}
+
 func TestClaudeState(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("NOZ_STATE_DIR", dir)

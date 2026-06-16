@@ -26,6 +26,7 @@ type sessionInfo struct {
 	attached   bool
 	agent      string // detected coding agent (claude, opencode, ...), or ""
 	state      string // working | waiting | needs-you (live sessions only)
+	memKiB     int    // resident memory of the session's process tree, in KiB
 }
 
 // defaultMinCategorySize is the minimum number of sessions for a prefix
@@ -141,7 +142,7 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 		if showRepo {
 			repoHdr = "  repo"
 		}
-		fmt.Fprintf(w, "%s    %-*s  %-9s  win  last%s%s\n", cGray, maxSlug, "", "state", repoHdr, cReset)
+		fmt.Fprintf(w, "%s    %-*s  %-9s  win  last    %-5s%s%s\n", cGray, maxSlug, "", "state", "mem", repoHdr, cReset)
 	}
 
 	// Render
@@ -219,17 +220,18 @@ func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {
 			idleStr = relativeTime(s.lastActive)
 		}
 
-		fmt.Fprintf(w, "  %s %-*s  %s%-9s%s  %s%-3s%s  %s%-6s%s%s\n",
+		fmt.Fprintf(w, "  %s %-*s  %s%-9s%s  %s%-3s%s  %s%-6s%s  %s%-5s%s%s\n",
 			marker, slugWidth, name,
 			stateColor, stateLabel, cReset,
 			cCyan, winStr, cReset,
 			cYellow, idleStr, cReset,
+			cGray, humanMem(s.memKiB), cReset,
 			repoStr)
 	} else {
 		marker := cGray + "○" + cReset
-		fmt.Fprintf(w, "  %s %s%-*s%s  %-9s  %-3s  %-6s%s\n",
+		fmt.Fprintf(w, "  %s %s%-*s%s  %-9s  %-3s  %-6s  %-5s%s\n",
 			marker, cDim, slugWidth, name, cReset,
-			"", "", "",
+			"", "", "", "",
 			repoStr)
 	}
 }
@@ -274,6 +276,7 @@ func discoverSessions() ([]sessionInfo, error) {
 			s.lastActive = td.lastActive
 			s.attached = td.attached
 			s.agent = td.agent
+			s.memKiB = td.memKiB
 		}
 
 		s.state = claudeState(s)
@@ -407,6 +410,7 @@ type tmuxDetail struct {
 	lastActive time.Time
 	attached   bool
 	agent      string // detected coding agent (claude, opencode, ...), or ""
+	memKiB     int    // resident memory of all panes' process trees, in KiB
 }
 
 func getTmuxDetails() map[string]tmuxDetail {
@@ -439,31 +443,100 @@ func getTmuxDetails() map[string]tmuxDetail {
 		}
 	}
 
-	detectAgents(details)
+	enrichFromPanes(details)
 	return details
 }
 
-// detectAgents scans every pane's current command and tags each session with
-// the coding agent running in it (first match wins). Best-effort.
-func detectAgents(details map[string]tmuxDetail) {
-	out, err := exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name}\t#{pane_current_command}").Output()
+// enrichFromPanes walks every pane to (a) detect the coding agent running in
+// each session and (b) sum the resident memory of each session's process
+// trees. Best-effort — leaves fields zero/empty on any failure.
+func enrichFromPanes(details map[string]tmuxDetail) {
+	out, err := exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name}\t#{pane_pid}\t#{pane_current_command}").Output()
 	if err != nil {
 		return
 	}
+
+	panePIDs := make(map[string][]string)
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
-		name, cmd, ok := strings.Cut(line, "\t")
-		if !ok {
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 3 {
 			continue
 		}
+		name, pid, cmd := parts[0], parts[1], parts[2]
 		d, known := details[name]
-		if !known || d.agent != "" {
+		if !known {
 			continue
 		}
-		if ag := agent.Detect(cmd); ag != "" {
-			d.agent = ag
-			details[name] = d
+		if d.agent == "" {
+			if ag := agent.Detect(cmd); ag != "" {
+				d.agent = ag
+				details[name] = d
+			}
 		}
+		panePIDs[name] = append(panePIDs[name], pid)
 	}
+
+	rss, children := readProcTree()
+	if rss == nil {
+		return
+	}
+	for name, pids := range panePIDs {
+		seen := make(map[string]bool)
+		total := 0
+		for _, p := range pids {
+			total += subtreeRSS(p, rss, children, seen)
+		}
+		d := details[name]
+		d.memKiB = total
+		details[name] = d
+	}
+}
+
+// readProcTree snapshots all processes' RSS (KiB) and parent→children edges.
+func readProcTree() (rss map[string]int, children map[string][]string) {
+	out, err := exec.Command("ps", "-axo", "pid=,ppid=,rss=").Output()
+	if err != nil {
+		return nil, nil
+	}
+	rss = make(map[string]int)
+	children = make(map[string][]string)
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 3 {
+			continue
+		}
+		pid, ppid := f[0], f[1]
+		kib, _ := strconv.Atoi(f[2])
+		rss[pid] = kib
+		children[ppid] = append(children[ppid], pid)
+	}
+	return rss, children
+}
+
+// subtreeRSS sums the RSS of pid and all its descendants. The seen set guards
+// against cycles and double-counting a pid reached via multiple panes.
+func subtreeRSS(pid string, rss map[string]int, children map[string][]string, seen map[string]bool) int {
+	if seen[pid] {
+		return 0
+	}
+	seen[pid] = true
+	total := rss[pid]
+	for _, c := range children[pid] {
+		total += subtreeRSS(c, rss, children, seen)
+	}
+	return total
+}
+
+// humanMem renders a KiB count as a compact MiB/GiB string ("397M", "1.2G").
+func humanMem(kib int) string {
+	if kib <= 0 {
+		return ""
+	}
+	mib := float64(kib) / 1024
+	if mib >= 1024 {
+		return fmt.Sprintf("%.1fG", mib/1024)
+	}
+	return fmt.Sprintf("%.0fM", mib)
 }
 
 // workingWindow is how recently a live session must have produced output
