@@ -19,6 +19,7 @@ func newPairCmd() *cobra.Command {
 	var depth int
 	var profile string
 	var agentName string
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "pair <slug>",
@@ -49,7 +50,7 @@ Examples:
 				if profile == "" {
 					profile = "review" // auto-select for PR sessions
 				}
-				return runPairPR(prNumber, depth, profile, agentName)
+				return runPairPR(prNumber, depth, profile, agentName, force)
 			}
 
 			slug = args[0]
@@ -63,7 +64,7 @@ Examples:
 			if noRepo || !inGitRepo() {
 				return runPairScratch(slug, agentName)
 			}
-			return runPairWorktree(slug, base, profile, agentName)
+			return runPairWorktree(slug, base, profile, agentName, force)
 		},
 	}
 
@@ -75,6 +76,7 @@ Examples:
 	cmd.RegisterFlagCompletionFunc("profile", completeProfiles)
 	cmd.Flags().StringVar(&agentName, "agent", "", "open a coding agent in a window (claude, opencode, codex, gemini, pi)")
 	cmd.RegisterFlagCompletionFunc("agent", completeAgents)
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "proceed even if the slug is a live session in another repo")
 
 	return cmd
 }
@@ -102,10 +104,16 @@ func completeAgents(cmd *cobra.Command, args []string, toComplete string) ([]str
 	return matches, cobra.ShellCompDirectiveNoFileComp
 }
 
-func runPairWorktree(slug, baseBranch, profile, agentName string) error {
+func runPairWorktree(slug, baseBranch, profile, agentName string, force bool) error {
 	repo, err := repoName()
 	if err != nil {
 		return err
+	}
+
+	if !force {
+		if other, live := liveSessionRepo(slug); live && other != "" && other != repo {
+			return fmt.Errorf("slug %q is already a live session in repo %q — pick a different slug, or use --force", slug, other)
+		}
 	}
 
 	root := nozRoot()
@@ -163,7 +171,7 @@ func runPairWorktree(slug, baseBranch, profile, agentName string) error {
 	return tmuxSession(slug, wtDir, primary, windows)
 }
 
-func runPairPR(prNumber string, depth int, profile, agentName string) error {
+func runPairPR(prNumber string, depth int, profile, agentName string, force bool) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return fmt.Errorf("gh CLI not found (needed for --pr)")
 	}
@@ -173,6 +181,13 @@ func runPairPR(prNumber string, depth int, profile, agentName string) error {
 		return err
 	}
 
+	slug := "review-" + prNumber
+	if !force {
+		if other, live := liveSessionRepo(slug); live && other != "" && other != repo {
+			return fmt.Errorf("slug %q is already a live session in repo %q — use --force", slug, other)
+		}
+	}
+
 	// Get PR branch name
 	out, err := exec.Command("gh", "pr", "view", prNumber, "--json", "headRefName", "-q", ".headRefName").Output()
 	if err != nil {
@@ -180,7 +195,6 @@ func runPairPR(prNumber string, depth int, profile, agentName string) error {
 	}
 	branch := strings.TrimSpace(string(out))
 
-	slug := "review-" + prNumber
 	root := nozRoot()
 	wtDir := filepath.Join(root, repo+"-"+slug)
 
@@ -450,6 +464,20 @@ func addToExclude(path, pattern string) {
 func inGitRepo() bool {
 	err := exec.Command("git", "rev-parse", "--show-toplevel").Run()
 	return err == nil
+}
+
+// liveSessionRepo reports the NOZ_REPO of a live tmux session named slug, and
+// whether such a session exists. repo is "" for a session that exists but
+// isn't noz-tagged.
+func liveSessionRepo(slug string) (repo string, live bool) {
+	out, err := exec.Command("tmux", "show-environment", "-t", slug, "NOZ_REPO").Output()
+	if err != nil {
+		return "", false // no such session
+	}
+	if r, ok := strings.CutPrefix(strings.TrimSpace(string(out)), "NOZ_REPO="); ok {
+		return r, true
+	}
+	return "", true // session exists but untagged ("-NOZ_REPO")
 }
 
 func repoName() (string, error) {

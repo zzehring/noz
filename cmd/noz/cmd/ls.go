@@ -268,7 +268,10 @@ func discoverSessions() ([]sessionInfo, error) {
 			dir:  dir,
 		}
 
-		if td, ok := tmux[slug]; ok {
+		// Match a live session to this worktree only when its NOZ_REPO tag
+		// agrees (or is absent) — so a same-slug session in another repo
+		// doesn't get claimed by both worktrees.
+		if td, ok := tmux[slug]; ok && (td.repo == "" || td.repo == repo) {
 			s.hasTmux = true
 			s.windows = td.windows
 			s.lastActive = td.lastActive
@@ -416,14 +419,16 @@ type tmuxDetail struct {
 	windows    int
 	lastActive time.Time
 	attached   bool
+	repo       string // NOZ_REPO tag — which repo this session belongs to ("" if untagged)
 	agent      string // detected coding agent (claude, opencode, ...), or ""
 }
 
 func getTmuxDetails() map[string]tmuxDetail {
 	details := make(map[string]tmuxDetail)
 
-	// Session-level info
-	out, err := exec.Command("tmux", "ls", "-F", "#{session_name}\t#{session_windows}\t#{session_activity}\t#{session_attached}").Output()
+	// Session-level info (incl. the NOZ_REPO tag, which disambiguates same-slug
+	// sessions across repos).
+	out, err := exec.Command("tmux", "ls", "-F", "#{session_name}\t#{session_windows}\t#{session_activity}\t#{session_attached}\t#{NOZ_REPO}").Output()
 	if err != nil {
 		return details
 	}
@@ -432,7 +437,7 @@ func getTmuxDetails() map[string]tmuxDetail {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\t", 4)
+		parts := strings.SplitN(line, "\t", 5)
 		if len(parts) < 4 {
 			continue
 		}
@@ -441,11 +446,16 @@ func getTmuxDetails() map[string]tmuxDetail {
 		windows, _ := strconv.Atoi(parts[1])
 		epoch, _ := strconv.ParseInt(parts[2], 10, 64)
 		attachCount, _ := strconv.Atoi(parts[3])
+		repo := ""
+		if len(parts) == 5 {
+			repo = parts[4]
+		}
 
 		details[name] = tmuxDetail{
 			windows:    windows,
 			lastActive: time.Unix(epoch, 0),
 			attached:   attachCount > 0,
+			repo:       repo,
 		}
 	}
 
