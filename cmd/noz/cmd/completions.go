@@ -23,6 +23,24 @@ func completeTmuxSessions(cmd *cobra.Command, args []string, toComplete string) 
 	return sessions, cobra.ShellCompDirectiveNoFileComp
 }
 
+// completeSlugs completes any discovered session slug (live or idle).
+func completeSlugs(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) > 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	sessions, err := discoverSessions()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	var out []string
+	for _, s := range sessions {
+		if strings.HasPrefix(s.slug, toComplete) {
+			out = append(out, s.slug)
+		}
+	}
+	return out, cobra.ShellCompDirectiveNoFileComp
+}
+
 // completePolicyNames provides tab completion for policy names.
 func completePolicyNames(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	var all []string

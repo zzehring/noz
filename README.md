@@ -3,9 +3,10 @@
 **A fast, stateless CLI for managing AI-agent pairing sessions.**
 
 `noz` turns each task into a git worktree + tmux session and gives you a live
-dashboard across all of them. It holds **no state of its own** — everything is
-derived on the fly from the filesystem, git, and tmux — so it can't drift, and
-it survives reboots (the worktrees do; `noz restore` brings the sessions back).
+dashboard across all of them. It keeps **no durable state of its own** —
+sessions are derived live from the filesystem, git, and tmux (a small
+`~/.cache/noz/` holds only disposable hints) — so it can't drift, and it
+survives reboots (the worktrees do; `noz restore` brings the sessions back).
 
 One command per task spins up an isolated worktree + tmux session; one
 dashboard shows which are live, which agent is running, and which are idle.
@@ -16,7 +17,8 @@ dashboard shows which are live, which agent is running, and which are idle.
 go install github.com/zzehring/nozey/cmd/noz@latest
 ```
 
-Sessions live under `$NOZ_ROOT` (default `~/worktrees/`).
+**Requires:** `git` and `tmux` (plus `fzf` for `noz sw`). Sessions live under
+`$NOZ_ROOT` (default `~/worktrees/`).
 
 ## Quick start
 
@@ -33,6 +35,10 @@ noz status                       # where am I? (slug, repo, branch, agent, state
 noz mv bug-123 bug-124           # rename across worktree + tmux + branch
 noz rm feature-auth              # tear down worktree + tmux
 ```
+
+**Agents:** noz launches and detects `claude`, `opencode`, `codex`, `gemini`,
+and `pi` (via `--agent` or profile windows). Command-gating hooks exist for
+Claude today; the others are launch/detect only.
 
 ## The dashboard
 
@@ -102,20 +108,37 @@ noz setup tmux           # prints a snippet to paste into ~/.tmux.conf:
 `noz` never edits your tmux config for you — it prints an append-safe snippet so
 it can't clobber your status bar or keybindings.
 
-## Optional: command gating
+## Shell setup
 
-A secondary feature for agents that support pre-tool hooks (Claude Code today):
-evaluate every command and file access against a [CEL](https://github.com/google/cel-go)
-policy before it runs.
+Running `noz` with no arguments shows the dashboard (same as `noz ls`).
+
+Tab-completion (commands, session slugs, profiles, agents):
 
 ```bash
-noz setup claude --policy readonly --project-only   # install PreToolUse hooks
-noz policy check '{"tool":"bash","cmd":"rm","args":["-rf","/"]}'
-noz setup claude --remove --project-only            # undo
+# zsh — add to ~/.zshrc (or drop into your fpath)
+source <(noz completion zsh)
+# bash:  source <(noz completion bash)   ·   fish: noz completion fish | source
 ```
 
-Shipped policies: `readonly`, `dev`, `sre`. This isn't the focus of the tool;
-it's there if you want it.
+Jump to a worktree by slug (with completion):
+
+```bash
+nzcd() { cd "$(noz path "$1")"; }
+```
+
+Show the current session's state in your prompt via `noz status --json`, e.g. a
+p10k segment that surfaces `working` / `waiting` next to your prompt.
+
+## Optional: command gating
+
+Not the focus of the tool, but available: for agents with pre-tool hooks
+(Claude Code today), evaluate every command and file access against a
+[CEL](https://github.com/google/cel-go) policy before it runs.
+
+```bash
+noz setup claude --policy readonly --project-only   # install hooks (readonly|dev|sre)
+noz setup claude --remove --project-only            # undo
+```
 
 ## How it works
 
@@ -137,6 +160,7 @@ it's there if you want it.
 | `noz ls [filter]` | Session dashboard (`-A` all repos, `--active`/`--idle`) |
 | `noz sw [filter]` | Fuzzy-pick a live session and switch to it |
 | `noz status` | Current session context (`--json` for a prompt segment) |
+| `noz path <slug>` | Print a session's worktree dir (`cd "$(noz path x)"`) |
 | `noz mv <old> <new>` | Rename a session across worktree + tmux + branch |
 | `noz rm <slug>` | Remove a session (`--keep-worktree`, `--delete-branch`) |
 | `noz reap [filter]` | Kill idle agents to reclaim memory |

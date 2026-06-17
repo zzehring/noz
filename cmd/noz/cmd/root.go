@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/spf13/cobra"
 )
 
@@ -21,7 +23,17 @@ List and switch sessions (ls, sw), spin up per-task workspaces (pair),
 shape them with profiles, and clean up (rm, prune, mv).
 
 Optional command-gating against CEL policies is available for agents that
-support pre-tool hooks — see 'noz setup' and 'noz gate'.`,
+support pre-tool hooks — see 'noz setup' and 'noz gate'.
+
+Run with no arguments to show the session dashboard (same as 'noz ls').`,
+		// Bare `noz` shows the dashboard; an unknown word is a bad command.
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())
+			}
+			return runLs(cmd, "", false, false, false, defaultMinCategorySize)
+		},
+		SilenceUsage: true,
 	}
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default ~/.config/noz/config.yaml)")
@@ -32,6 +44,7 @@ support pre-tool hooks — see 'noz setup' and 'noz gate'.`,
 	rootCmd.AddCommand(newLsCmd())
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newSwCmd())
+	rootCmd.AddCommand(newPathCmd())
 	rootCmd.AddCommand(newMvCmd())
 	rootCmd.AddCommand(newRmCmd())
 	rootCmd.AddCommand(newRestoreCmd())
