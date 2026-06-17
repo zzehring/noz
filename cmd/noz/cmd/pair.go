@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/zzehring/noz/internal/agent"
@@ -559,28 +560,40 @@ func encodeClaudeProject(absDir string) string {
 }
 
 // hasClaudeHistory reports whether Claude Code has a saved conversation for the
-// given dir (a .jsonl transcript under ~/.claude/projects/<encoded>). Best
-// effort: a miss just means no resume hint is shown.
+// given dir. Best effort: a miss just means no resume hint is shown.
 func hasClaudeHistory(dir string) bool {
+	return !claudeHistoryMtime(dir).IsZero()
+}
+
+// claudeHistoryMtime returns the mtime of the newest Claude Code transcript for
+// the given worktree (a .jsonl under ~/.claude/projects/<encoded>), or the zero
+// time if there is none. This is a durable, reboot-surviving signal that an
+// agent session happened here — and when — so noz can derive "what was I
+// recently working on" without persisting any state of its own.
+func claudeHistoryMtime(dir string) time.Time {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		abs = dir
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return false
+		return time.Time{}
 	}
 	pd := filepath.Join(home, ".claude", "projects", encodeClaudeProject(abs))
 	entries, err := os.ReadDir(pd)
 	if err != nil {
-		return false
+		return time.Time{}
 	}
+	var newest time.Time
 	for _, e := range entries {
-		if !e.IsDir() && strings.HasSuffix(e.Name(), ".jsonl") {
-			return true
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".jsonl") {
+			continue
+		}
+		if fi, err := e.Info(); err == nil && fi.ModTime().After(newest) {
+			newest = fi.ModTime()
 		}
 	}
-	return false
+	return newest
 }
 
 // resumeHint nudges the user to resume a prior Claude conversation rather than

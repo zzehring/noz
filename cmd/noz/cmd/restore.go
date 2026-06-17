@@ -1,12 +1,11 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -15,16 +14,21 @@ func newRestoreCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "restore [filter]",
 		Short: "Re-create tmux sessions that were live before (e.g. after a reboot)",
-		Long: `Re-creates tmux sessions for the worktrees that were live the last time
-noz saw them — handy after a reboot, when the worktrees survive but the
-tmux layer is gone. noz records the live set as you use it
-(~/.cache/noz/live.json).
+		Long: `Re-creates tmux sessions for worktrees you were recently working in —
+handy after a reboot, when the worktrees survive but the tmux layer is gone.
+
+With no argument, noz brings back idle worktrees with recent activity,
+derived live from durable signals (agent transcripts, worktree mtime) —
+nothing is persisted, so there's no state to drift or clobber. The window
+defaults to 48h (override with NOZ_RESTORE_WINDOW, e.g. 1h, 72h) and is
+capped so a reboot can't spin up dozens of sessions. With a filter, every
+matching idle worktree is restored — naming something is intent.
 
 Sessions are created detached and tagged; it does NOT launch coding agents
 (that would spin up many at once). Resume an agent yourself with
 'claude --continue' in its worktree, or jump in with 'noz sw'.
 
-  noz restore          # bring back the whole saved set
+  noz restore          # bring back recently-active worktrees
   noz restore cf       # only cf-* sessions
   noz restore ^review  # only review-* sessions`,
 		Args: cobra.MaximumNArgs(1),
@@ -49,32 +53,41 @@ func runRestore(cmd *cobra.Command, filter string) error {
 	}
 	sessions = filterSessions(sessions, filter, false, false)
 
-	// With an explicit filter, restore the matching worktrees directly. With no
-	// filter, restore the recorded live set (the manifest) — "bring back what was
-	// running."
-	var wantSet map[string]bool
-	if filter == "" {
-		want := loadLiveManifest()
-		if len(want) == 0 {
-			fmt.Fprintln(w, "noz: nothing recorded to restore — name one with `noz restore <slug>` (see `noz ls`).")
-			return nil
-		}
-		wantSet = make(map[string]bool, len(want))
-		for _, s := range want {
-			wantSet[s] = true
-		}
-	}
-
 	tmuxBin, err := exec.LookPath("tmux")
 	if err != nil {
 		return fmt.Errorf("tmux not found")
 	}
 
+	// Which idle worktrees do we bring back? With an explicit filter, all that
+	// match — naming something is intent. With no filter, derive "what was I
+	// recently working on" from durable activity signals within a recency
+	// window, capped, so a reboot doesn't spin up dozens of sessions.
+	window := restoreWindow()
+	skipped := 0
+	if filter == "" {
+		var cand []sessionInfo
+		for _, s := range sessions {
+			if s.hasTmux {
+				continue // already running — not a restore candidate
+			}
+			act := sessionActivity(s.dir)
+			if act.IsZero() || time.Since(act) > window {
+				skipped++
+				continue
+			}
+			s.lastActive = act
+			cand = append(cand, s)
+		}
+		sort.Slice(cand, func(i, j int) bool { return cand[i].lastActive.After(cand[j].lastActive) })
+		if len(cand) > restoreMaxAuto {
+			skipped += len(cand) - restoreMaxAuto
+			cand = cand[:restoreMaxAuto]
+		}
+		sessions = cand
+	}
+
 	restored, live := 0, 0
 	for _, s := range sessions {
-		if wantSet != nil && !wantSet[s.slug] { // manifest gate only when no filter
-			continue
-		}
 		if s.hasTmux {
 			live++
 			continue
@@ -88,15 +101,25 @@ func runRestore(cmd *cobra.Command, filter string) error {
 	}
 
 	if restored+live == 0 {
-		if filter != "" {
+		switch {
+		case filter != "":
 			fmt.Fprintf(w, "noz: nothing to restore for %q — no matching idle worktree.\n", filter)
-		} else {
+		case skipped > 0:
+			fmt.Fprintf(w, "noz: nothing active in the last %s to restore — name one with `noz restore <slug>` (see `noz ls`).\n", window)
+		default:
 			fmt.Fprintln(w, "noz: nothing to restore.")
 		}
 		return nil
 	}
 
-	fmt.Fprintf(w, "\n%snoz: restored %d session(s), %d already live%s\n", cGray, restored, live, cReset)
+	if live > 0 {
+		fmt.Fprintf(w, "\n%snoz: restored %d session(s), %d already live%s\n", cGray, restored, live, cReset)
+	} else {
+		fmt.Fprintf(w, "\n%snoz: restored %d session(s)%s\n", cGray, restored, cReset)
+	}
+	if skipped > 0 {
+		fmt.Fprintf(w, "%snoz: %d other idle worktree(s) not restored — name one to bring it back (e.g. `noz restore <slug>`)%s\n", cGray, skipped, cReset)
+	}
 
 	// Drop you back on the ship. If we're not already in tmux and have a
 	// terminal, attach to the most-recently-used session; otherwise just point
@@ -123,47 +146,31 @@ func createDetachedSession(tmuxBin, slug, dir, repo string) error {
 	return nil
 }
 
-// --- live-session manifest -------------------------------------------------
+// --- stateless restore: derive "recently worked on" from durable signals ---
 
-func nozCacheDir() string {
-	if d := os.Getenv("NOZ_CACHE_DIR"); d != "" {
-		return d
+// restoreMaxAuto caps how many idle worktrees a no-argument `noz restore` will
+// bring back, so a reboot can't spin up an unbounded number of sessions. Name
+// a worktree explicitly to restore beyond the cap.
+const restoreMaxAuto = 12
+
+// restoreWindow is how far back a no-argument `noz restore` looks for activity.
+func restoreWindow() time.Duration {
+	if v := os.Getenv("NOZ_RESTORE_WINDOW"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
 	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".cache", "noz")
+	return 48 * time.Hour
 }
 
-func liveManifestPath() string {
-	return filepath.Join(nozCacheDir(), "live.json")
-}
-
-// saveLiveManifest records the currently-live session slugs so `noz restore`
-// can bring them back after a reboot. It never overwrites a good set with an
-// empty one — so running `noz ls` post-reboot (when nothing is live) won't
-// erase what was there. Best-effort.
-func saveLiveManifest(slugs []string) {
-	if len(slugs) == 0 {
-		return
+// sessionActivity returns the most recent durable signal that a worktree was
+// being worked in — surviving a reboot, derived, never persisted by noz. It
+// prefers the agent transcript (high-fidelity: "a session happened here"), and
+// falls back to the worktree directory's own mtime.
+func sessionActivity(dir string) time.Time {
+	newest := claudeHistoryMtime(dir)
+	if fi, err := os.Stat(dir); err == nil && fi.ModTime().After(newest) {
+		newest = fi.ModTime()
 	}
-	sort.Strings(slugs)
-	data, err := json.MarshalIndent(slugs, "", "  ")
-	if err != nil {
-		return
-	}
-	if err := os.MkdirAll(nozCacheDir(), 0755); err != nil {
-		return
-	}
-	os.WriteFile(liveManifestPath(), data, 0644)
-}
-
-func loadLiveManifest() []string {
-	data, err := os.ReadFile(liveManifestPath())
-	if err != nil {
-		return nil
-	}
-	var slugs []string
-	if err := json.Unmarshal(data, &slugs); err != nil {
-		return nil
-	}
-	return slugs
+	return newest
 }

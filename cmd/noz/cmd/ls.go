@@ -189,7 +189,7 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 
 	// Nudge to recover sessions that were live last time but aren't now —
 	// typically a reboot killed tmux while the worktrees survived.
-	if n := len(strandedSessions()); n > 0 {
+	if n := len(strandedSessions(sessions)); n > 0 {
 		fmt.Fprintf(w, "%s%d session(s) aren't running — `noz restore` to bring them back (e.g. after a reboot)%s\n",
 			cYellow, n, cReset)
 	}
@@ -197,19 +197,22 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 	return nil
 }
 
-// strandedSessions returns recorded-live slugs that aren't currently running —
-// restore candidates, typically after a reboot.
-func strandedSessions() []string {
-	want := loadLiveManifest()
-	if len(want) == 0 {
-		return nil
-	}
-	live := tmuxSessions()
+// strandedSessions returns idle worktrees that were recently active but aren't
+// running now — restore candidates, typically after a reboot. Derived from
+// durable activity signals (agent transcripts, worktree mtime), no persisted
+// state.
+func strandedSessions(sessions []sessionInfo) []string {
+	window := restoreWindow()
 	var out []string
-	for _, slug := range want {
-		if !live[slug] {
-			out = append(out, slug)
+	for _, s := range sessions {
+		if s.hasTmux {
+			continue
 		}
+		act := sessionActivity(s.dir)
+		if act.IsZero() || time.Since(act) > window {
+			continue
+		}
+		out = append(out, s.slug)
 	}
 	return out
 }
@@ -307,16 +310,6 @@ func discoverSessions() ([]sessionInfo, error) {
 		s.category = categorizeSlug(slug)
 		sessions = append(sessions, s)
 	}
-
-	// Keep the restore manifest fresh with the current live set (no-op when
-	// nothing is live, so a post-reboot scan won't erase it).
-	var live []string
-	for _, s := range sessions {
-		if s.hasTmux {
-			live = append(live, s.slug)
-		}
-	}
-	saveLiveManifest(live)
 
 	return sessions, nil
 }
