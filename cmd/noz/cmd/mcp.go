@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"os/exec"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
@@ -46,6 +49,13 @@ func runMCP(ctx context.Context) error {
 		Description: "Report the current session's context: slug, repo, branch, the agent " +
 			"running, and working/waiting state. Use this to know where you are.",
 	}, mcpStatus)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "noz_switch",
+		Description: "Switch the user's tmux client to the live noz session with the given " +
+			"slug — i.e. move them to that context. Use after noz_sessions to navigate the " +
+			"user between their workstreams. Only works when running inside tmux.",
+	}, mcpSwitch)
 
 	return s.Run(ctx, &mcp.StdioTransport{})
 }
@@ -107,4 +117,33 @@ func mcpSessions(ctx context.Context, req *mcp.CallToolRequest, in mcpSessionsIn
 
 func mcpStatus(ctx context.Context, req *mcp.CallToolRequest, in mcpEmptyInput) (*mcp.CallToolResult, statusInfo, error) {
 	return nil, gatherStatus(), nil
+}
+
+type mcpSwitchInput struct {
+	Slug string `json:"slug" jsonschema:"the live session slug to switch the tmux client to (see noz_sessions)"`
+}
+
+type mcpSwitchOutput struct {
+	Switched bool   `json:"switched"`
+	Message  string `json:"message"`
+}
+
+func mcpSwitch(ctx context.Context, req *mcp.CallToolRequest, in mcpSwitchInput) (*mcp.CallToolResult, mcpSwitchOutput, error) {
+	if err := validSlug(in.Slug); err != nil {
+		return nil, mcpSwitchOutput{Message: err.Error()}, nil
+	}
+	if !tmuxHasSession(in.Slug) {
+		return nil, mcpSwitchOutput{Message: fmt.Sprintf("no live session %q — list with noz_sessions; if it's idle, it needs `noz restore`/`noz pair` first", in.Slug)}, nil
+	}
+	if os.Getenv("TMUX") == "" {
+		return nil, mcpSwitchOutput{Message: "not running inside tmux — can't switch the client from here"}, nil
+	}
+	tmuxBin, err := exec.LookPath("tmux")
+	if err != nil {
+		return nil, mcpSwitchOutput{Message: "tmux not found"}, nil
+	}
+	if err := exec.Command(tmuxBin, "switch-client", "-t", in.Slug).Run(); err != nil {
+		return nil, mcpSwitchOutput{Message: fmt.Sprintf("switch failed: %v", err)}, nil
+	}
+	return nil, mcpSwitchOutput{Switched: true, Message: "switched to " + in.Slug}, nil
 }
