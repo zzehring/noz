@@ -34,6 +34,9 @@ func newRmCmd() *cobra.Command {
 }
 
 func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
+	if err := validSlug(slug); err != nil {
+		return err
+	}
 	root := nozRoot()
 
 	// Try to find the worktree directory
@@ -56,7 +59,7 @@ func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 			}
 			fmt.Fprintf(os.Stderr, "noz: removed worktree at %s\n", wtDir)
 			removed = true
-		} else if dirExists(scratchDir) {
+		} else if dirExists(scratchDir) && isWithinRoot(root, scratchDir) {
 			if err := os.RemoveAll(scratchDir); err != nil {
 				return fmt.Errorf("removing scratch dir: %w", err)
 			}

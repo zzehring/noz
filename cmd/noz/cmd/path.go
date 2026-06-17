@@ -28,6 +28,9 @@ When the same slug exists in multiple repos, the current repo's wins.`,
 }
 
 func runPath(cmd *cobra.Command, slug string) error {
+	if err := validSlug(slug); err != nil {
+		return err
+	}
 	sessions, err := discoverSessions()
 	if err != nil {
 		return err

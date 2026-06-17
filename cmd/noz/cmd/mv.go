@@ -34,6 +34,12 @@ Examples:
 }
 
 func runMv(oldSlug, newSlug string) error {
+	if err := validSlug(oldSlug); err != nil {
+		return err
+	}
+	if err := validSlug(newSlug); err != nil {
+		return err
+	}
 	if oldSlug == newSlug {
 		return fmt.Errorf("old and new slug are the same")
 	}

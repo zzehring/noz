@@ -54,6 +54,9 @@ Examples:
 			}
 
 			slug = args[0]
+			if err := validSlug(slug); err != nil {
+				return err
+			}
 			if len(args) > 1 {
 				base = args[1]
 			}
@@ -459,6 +462,25 @@ func addToExclude(path, pattern string) {
 	}
 	defer f.Close()
 	f.WriteString(pattern + "\n")
+}
+
+// validSlug rejects names that could escape the worktree root or confuse
+// tmux/git. Anything that becomes a path or a tmux session name must be a
+// simple name: no separators, no traversal, no leading dash/dot, no spaces.
+func validSlug(slug string) error {
+	if slug == "" {
+		return fmt.Errorf("empty session name")
+	}
+	if strings.ContainsAny(slug, `/\`) {
+		return fmt.Errorf("invalid session name %q: no '/' or '\\'", slug)
+	}
+	if strings.ContainsAny(slug, " \t\n") {
+		return fmt.Errorf("invalid session name %q: no whitespace", slug)
+	}
+	if strings.HasPrefix(slug, "-") || strings.HasPrefix(slug, ".") {
+		return fmt.Errorf("invalid session name %q: cannot start with '-' or '.'", slug)
+	}
+	return nil
 }
 
 func inGitRepo() bool {
