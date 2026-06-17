@@ -187,7 +187,31 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 	fmt.Fprintf(w, "\n%s%d active · %d idle · %d total%s\n",
 		cGray, activeCount, staleCount, activeCount+staleCount, cReset)
 
+	// Nudge to recover sessions that were live last time but aren't now —
+	// typically a reboot killed tmux while the worktrees survived.
+	if n := len(strandedSessions()); n > 0 {
+		fmt.Fprintf(w, "%s%d session(s) aren't running — `noz restore` to bring them back (e.g. after a reboot)%s\n",
+			cYellow, n, cReset)
+	}
+
 	return nil
+}
+
+// strandedSessions returns recorded-live slugs that aren't currently running —
+// restore candidates, typically after a reboot.
+func strandedSessions() []string {
+	want := loadLiveManifest()
+	if len(want) == 0 {
+		return nil
+	}
+	live := tmuxSessions()
+	var out []string
+	for _, slug := range want {
+		if !live[slug] {
+			out = append(out, slug)
+		}
+	}
+	return out
 }
 
 func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {

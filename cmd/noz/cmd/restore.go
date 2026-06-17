@@ -82,10 +82,22 @@ func runRestore(cmd *cobra.Command, filter string) error {
 	}
 
 	fmt.Fprintf(w, "\n%snoz: restored %d session(s), %d already live%s\n", cGray, restored, live, cReset)
-	if restored > 0 {
-		fmt.Fprintf(w, "%snoz: jump in with 'noz sw'; resume an agent with 'claude --continue' in its worktree%s\n", cGray, cReset)
+
+	if restored+live == 0 {
+		return nil
 	}
-	return nil
+
+	// Drop you back on the ship. If we're not already in tmux and have a
+	// terminal, attach to the most-recently-used session; otherwise just point
+	// the way. (NOZ_NO_ATTACH / non-tty keep it non-interactive for scripts.)
+	if os.Getenv("NOZ_NO_ATTACH") != "" || !stdoutIsTerminal() || os.Getenv("TMUX") != "" {
+		fmt.Fprintf(w, "%snoz: jump in with 'noz sw'; resume an agent with 'claude --continue'%s\n", cGray, cReset)
+		return nil
+	}
+	fmt.Fprintf(os.Stderr, "noz: attaching — prefix+j or 'noz sw' to move, 'claude --continue' to resume an agent\n")
+	att := exec.Command(tmuxBin, "attach")
+	att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return att.Run()
 }
 
 // createDetachedSession creates a tagged tmux session without attaching.
