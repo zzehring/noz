@@ -4,8 +4,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/zzehring/nozey/internal/config"
-	"github.com/zzehring/nozey/internal/gate"
+	"github.com/zzehring/noz/internal/config"
+	"github.com/zzehring/noz/internal/gate"
 )
 
 // completeTmuxSessions provides tab completion for tmux session names.

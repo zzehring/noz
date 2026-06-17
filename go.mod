@@ -1,4 +1,4 @@
-module github.com/zzehring/nozey
+module github.com/zzehring/noz
 
 go 1.26.3
 

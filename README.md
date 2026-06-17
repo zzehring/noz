@@ -14,7 +14,7 @@ dashboard shows which are live, which agent is running, and which are idle.
 ## Install
 
 ```bash
-go install github.com/zzehring/nozey/cmd/noz@latest
+go install github.com/zzehring/noz/cmd/noz@latest
 ```
 
 **Requires:** `git` and `tmux` (plus `fzf` for `noz sw`). Sessions live under

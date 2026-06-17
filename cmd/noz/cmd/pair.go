@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/zzehring/nozey/internal/agent"
+	"github.com/zzehring/noz/internal/agent"
 )
 
 func newPairCmd() *cobra.Command {

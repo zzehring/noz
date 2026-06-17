@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/zzehring/nozey/internal/gate"
+	"github.com/zzehring/noz/internal/gate"
 )
 
 // Parse converts a JSON string into a CommandRequest.
