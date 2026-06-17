@@ -129,6 +129,29 @@ nzcd() { cd "$(noz path "$1")"; }
 Show the current session's state in your prompt via `noz status --json`, e.g. a
 p10k segment that surfaces `working` / `waiting` next to your prompt.
 
+## Agent integration (MCP)
+
+`noz mcp` runs an MCP server over stdio so a coding agent can *see your
+sessions* — list them, read the current one, and know what else you're working
+on across contexts. It's stateless (just reads fs/tmux), so the agent spawns it
+as a subprocess; no daemon, ports, or auth.
+
+```bash
+noz setup mcp      # prints how to register it
+```
+
+Register it with Claude Code either way:
+
+```jsonc
+// .mcp.json in your repo (project scope)
+{ "mcpServers": { "noz": { "command": "noz", "args": ["mcp"] } } }
+```
+```bash
+claude mcp add noz -- noz mcp     # user scope
+```
+
+Tools today (read-only): `noz_sessions`, `noz_status`. Navigation/spawn come next.
+
 ## Optional: command gating
 
 Not the focus of the tool, but available: for agents with pre-tool hooks

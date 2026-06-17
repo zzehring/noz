@@ -23,6 +23,7 @@ func newSetupCmd() *cobra.Command {
 		Long: `Set up an integration target:
 
   tmux     prints a status-bar + jump-key snippet to add to ~/.tmux.conf
+  mcp      prints how to register noz as an MCP server (agent session-awareness)
   claude   installs PreToolUse gate hooks into ~/.claude/settings.json
 
 Other agents (opencode, codex, gemini, pi) are known to noz for launch and
@@ -56,14 +57,38 @@ func runSetup(agentName string, remove, projectOnly, dryRun bool) error {
 	if agentName == "tmux" {
 		return setupTmux(remove)
 	}
+	if agentName == "mcp" {
+		return setupMCP()
+	}
 	a, ok := agent.Lookup(agentName)
 	if !ok {
-		return fmt.Errorf("unknown agent %q (known: %s; or 'tmux')", agentName, strings.Join(agent.Names(), ", "))
+		return fmt.Errorf("unknown agent %q (known: %s; or 'tmux', 'mcp')", agentName, strings.Join(agent.Names(), ", "))
 	}
 	if a.Name == "claude" {
 		return setupClaude(remove, projectOnly, dryRun)
 	}
 	return fmt.Errorf("gate hooks for %q aren't implemented yet — noz can launch and detect it, but not gate it", a.Name)
+}
+
+// nozMCPConfig is the Claude Code .mcp.json snippet for the noz MCP server.
+const nozMCPConfig = `{
+  "mcpServers": {
+    "noz": { "command": "noz", "args": ["mcp"] }
+  }
+}`
+
+// setupMCP prints how to register noz as an MCP server (print-only, like tmux).
+func setupMCP() error {
+	fmt.Fprintln(os.Stderr, "noz: register noz as an MCP server so your agent can see your sessions.")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Project scope — add to .mcp.json in your repo root:")
+	fmt.Fprintln(os.Stdout, nozMCPConfig)
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "User scope (Claude Code) — run:")
+	fmt.Fprintln(os.Stderr, "  claude mcp add noz -- noz mcp")
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "Then reload your agent. Tools exposed: noz_sessions, noz_status.")
+	return nil
 }
 
 func setupClaude(remove, projectOnly, dryRun bool) error {

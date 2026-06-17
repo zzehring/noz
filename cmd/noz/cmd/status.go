@@ -39,9 +39,8 @@ Use --json for a machine-readable form (e.g. a shell-prompt segment).`,
 	}
 }
 
-func runStatus(cmd *cobra.Command, jsonOut bool) error {
-	w := cmd.OutOrStdout()
-
+// gatherStatus derives the current session's context from cwd, git, and tmux.
+func gatherStatus() statusInfo {
 	cwd, _ := os.Getwd()
 	repo, _ := repoName()
 	branch := gitBranch()
@@ -60,6 +59,14 @@ func runStatus(cmd *cobra.Command, jsonOut bool) error {
 		}
 		info.State = claudeState(sessionInfo{slug: slug, hasTmux: true, lastActive: td.lastActive})
 	}
+	return info
+}
+
+func runStatus(cmd *cobra.Command, jsonOut bool) error {
+	w := cmd.OutOrStdout()
+
+	info := gatherStatus()
+	cwd, repo, branch := info.Dir, info.Repo, info.Branch
 
 	if jsonOut {
 		enc := json.NewEncoder(w)

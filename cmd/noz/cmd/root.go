@@ -45,6 +45,7 @@ Run with no arguments to show the session dashboard (same as 'noz ls').`,
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newSwCmd())
 	rootCmd.AddCommand(newPathCmd())
+	rootCmd.AddCommand(newMcpCmd())
 	rootCmd.AddCommand(newMvCmd())
 	rootCmd.AddCommand(newRmCmd())
 	rootCmd.AddCommand(newRestoreCmd())
