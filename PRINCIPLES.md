@@ -25,16 +25,24 @@ write; detect and adapt, don't impose. Emit nothing without opt-in. Expose
 metadata, never the contents of files or conversations.
 → respect the machine you run on; your data is yours.
 
-## 5. Safe by construction
+## 5. Safe and resilient by construction
 Destructive paths are scoped so they can't reach your work — validated names,
 guarded to the worktree root, teardown that can't touch a worktree, prune that
-skips dirty, deletes that never force.
+skips dirty, deletes that never force. And a missing dependency or partial
+failure degrades gracefully: noz does less, never damage (atomic writes,
+fallbacks, errors over corruption).
 → safety is a property of the design, not a scary prompt.
 
 ## 6. Honest over clever
 Don't claim "stateless" if there's state, or "10x" because it sounds good.
 Surface the caveats.
 → an accurate mental model is worth more than a tagline.
+
+## 7. Transparent
+What noz does is visible and auditable — it announces its actions, and
+destructive ops leave a trail you can read. (An append-only log is still
+throwaway-able, so this stays compatible with #1.)
+→ you can always answer "what did it do, and when?"
 
 ---
 
