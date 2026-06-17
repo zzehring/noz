@@ -43,21 +43,27 @@ func runRestore(cmd *cobra.Command, filter string) error {
 	initColors()
 	w := cmd.OutOrStdout()
 
-	want := loadLiveManifest()
-	if len(want) == 0 {
-		fmt.Fprintln(w, "noz: no saved session set to restore yet (noz records live sessions as you use it).")
-		return nil
-	}
-	wantSet := make(map[string]bool, len(want))
-	for _, s := range want {
-		wantSet[s] = true
-	}
-
 	sessions, err := discoverSessions()
 	if err != nil {
 		return err
 	}
 	sessions = filterSessions(sessions, filter, false, false)
+
+	// With an explicit filter, restore the matching worktrees directly. With no
+	// filter, restore the recorded live set (the manifest) — "bring back what was
+	// running."
+	var wantSet map[string]bool
+	if filter == "" {
+		want := loadLiveManifest()
+		if len(want) == 0 {
+			fmt.Fprintln(w, "noz: nothing recorded to restore — name one with `noz restore <slug>` (see `noz ls`).")
+			return nil
+		}
+		wantSet = make(map[string]bool, len(want))
+		for _, s := range want {
+			wantSet[s] = true
+		}
+	}
 
 	tmuxBin, err := exec.LookPath("tmux")
 	if err != nil {
@@ -66,7 +72,7 @@ func runRestore(cmd *cobra.Command, filter string) error {
 
 	restored, live := 0, 0
 	for _, s := range sessions {
-		if !wantSet[s.slug] {
+		if wantSet != nil && !wantSet[s.slug] { // manifest gate only when no filter
 			continue
 		}
 		if s.hasTmux {
@@ -81,11 +87,16 @@ func runRestore(cmd *cobra.Command, filter string) error {
 		restored++
 	}
 
-	fmt.Fprintf(w, "\n%snoz: restored %d session(s), %d already live%s\n", cGray, restored, live, cReset)
-
 	if restored+live == 0 {
+		if filter != "" {
+			fmt.Fprintf(w, "noz: nothing to restore for %q — no matching idle worktree.\n", filter)
+		} else {
+			fmt.Fprintln(w, "noz: nothing to restore.")
+		}
 		return nil
 	}
+
+	fmt.Fprintf(w, "\n%snoz: restored %d session(s), %d already live%s\n", cGray, restored, live, cReset)
 
 	// Drop you back on the ship. If we're not already in tmux and have a
 	// terminal, attach to the most-recently-used session; otherwise just point
