@@ -3,10 +3,10 @@
 **A fast, stateless CLI for managing AI-agent pairing sessions.**
 
 `noz` turns each task into a git worktree + tmux session and gives you a live
-dashboard across all of them. It keeps **no durable state of its own** —
-sessions are derived live from the filesystem, git, and tmux (a small
-`~/.cache/noz/` holds only disposable hints) — so it can't drift, and it
-survives reboots (the worktrees do; `noz restore` brings the sessions back).
+dashboard across all of them. It keeps **no state of its own** — everything is
+derived live from the filesystem, git, and tmux — so it can't drift, and it
+survives reboots (the worktrees do; `noz restore` brings recently-active
+sessions back).
 
 One command per task spins up an isolated worktree + tmux session; one
 dashboard shows which are live, which agent is running, and which are idle.
@@ -152,6 +152,20 @@ claude mcp add noz -- noz mcp     # user scope
 
 Tools today (read-only): `noz_sessions`, `noz_status`. Navigation/spawn come next.
 
+## Observability (opt-in)
+
+`noz metrics` emits your session landscape as Prometheus text — counts by
+state/agent/repo, last-activity per live session. noz is a CLI (no daemon), so
+feed it to Prometheus/Mimir via the textfile collector:
+
+```bash
+noz metrics --textfile "$HOME/.local/state/noz/noz.prom"   # via cron/launchd/Alloy
+```
+
+A starter Grafana dashboard lives at `dashboards/noz.json` (Prometheus
+datasource). Visualize your fleet of contexts and watch idle/memory trends over
+time.
+
 ## Optional: command gating
 
 Not the focus of the tool, but available: for agents with pre-tool hooks
@@ -171,9 +185,10 @@ noz setup claude --remove --project-only            # undo
   repo from its `.git` pointer, and cross-referencing `tmux`.
 - **Identity** is tagged on the tmux session (`NOZ_SLUG`, `NOZ_REPO`), so
   same-named slugs in different repos don't collide.
-- **State** (working/waiting) comes from tmux activity; an optional
-  `~/.cache/noz/` cache holds the live-session set (for `restore`) and any
-  hook-written agent state — both degrade gracefully if absent.
+- **State** (working/waiting) comes from tmux activity.
+- **Recovery** (`noz restore`) brings back recently-active worktrees after a
+  reboot by reading durable, reboot-surviving signals (agent transcript and
+  worktree mtimes) — there's no manifest or cache to keep in sync.
 
 ## Commands
 
