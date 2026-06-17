@@ -19,6 +19,31 @@ func TestParseFootprintMiB(t *testing.T) {
 	}
 }
 
+func TestCmdMentionsAgent(t *testing.T) {
+	yes := []struct{ cmd, agent string }{
+		{"node /Users/user/.local/share/claude/cli.js", "claude"},
+		{"claude", "claude"},
+		{"/usr/bin/pi", "pi"},
+		{"pi --flag", "pi"},
+	}
+	for _, c := range yes {
+		if !cmdMentionsAgent(c.cmd, c.agent) {
+			t.Errorf("cmdMentionsAgent(%q, %q) = false, want true", c.cmd, c.agent)
+		}
+	}
+	no := []struct{ cmd, agent string }{
+		{"python3 script.py", "pi"}, // pi inside python
+		{"pip install foo", "pi"},   // pi inside pip
+		{"/usr/bin/vim notes.pid", "pi"},
+		{"node server.js", "claude"},
+	}
+	for _, c := range no {
+		if cmdMentionsAgent(c.cmd, c.agent) {
+			t.Errorf("cmdMentionsAgent(%q, %q) = true, want false", c.cmd, c.agent)
+		}
+	}
+}
+
 func TestFindAgent(t *testing.T) {
 	// pane shell (100) -> node running claude (200) -> child (300)
 	pi := procInfo{

@@ -134,13 +134,18 @@ func runPrune(cmd *cobra.Command, force bool, maxAge string, all bool) error {
 		action = "removing"
 	}
 
-	var totalRemoved int
+	var totalRemoved, skipped int
 	for _, s := range stale {
-		fmt.Fprintf(w, "  %s %-50s  age: %-8s  size: %s\n", action, s.name, formatAge(s.age), s.size)
+		dirty := ""
+		if worktreeHasChanges(s.path) {
+			dirty = "  (uncommitted — will skip)"
+		}
+		fmt.Fprintf(w, "  %s %-50s  age: %-8s  size: %s%s\n", action, s.name, formatAge(s.age), s.size, dirty)
 
 		if force {
 			if err := removeSessionDir(s.path, s.name); err != nil {
-				fmt.Fprintf(os.Stderr, "  error removing %s: %v\n", s.name, err)
+				fmt.Fprintf(os.Stderr, "  %v\n", err)
+				skipped++
 			} else {
 				totalRemoved++
 			}
@@ -149,7 +154,11 @@ func runPrune(cmd *cobra.Command, force bool, maxAge string, all bool) error {
 
 	fmt.Fprintln(w)
 	if force {
-		fmt.Fprintf(w, "pruned %d sessions, kept %d\n", totalRemoved, kept)
+		fmt.Fprintf(w, "pruned %d sessions, kept %d", totalRemoved, kept)
+		if skipped > 0 {
+			fmt.Fprintf(w, ", skipped %d with changes", skipped)
+		}
+		fmt.Fprintln(w)
 	} else {
 		fmt.Fprintf(w, "%d sessions to prune, %d kept (use --force to remove)\n", len(stale), kept)
 	}
@@ -172,23 +181,37 @@ func isWithinRoot(root, path string) bool {
 	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// worktreeHasChanges reports whether a git worktree has uncommitted OR
+// untracked changes. Returns false for non-git dirs (e.g. scratch), which have
+// no such concept.
+func worktreeHasChanges(path string) bool {
+	out, err := exec.Command("git", "-C", path, "status", "--porcelain").Output()
+	if err != nil {
+		return false
+	}
+	return len(strings.TrimSpace(string(out))) > 0
+}
+
 func removeSessionDir(path, name string) error {
 	// Safety: never remove anything outside the noz worktree root.
 	if !isWithinRoot(nozRoot(), path) {
 		return fmt.Errorf("refusing to remove %q: outside the noz root", path)
 	}
-
 	slug := extractSlug(name)
 
-	// Try git worktree remove first (cleaner, updates git's worktree list)
+	// Never discard uncommitted/untracked work — prune only removes clean ones.
+	if worktreeHasChanges(path) {
+		return fmt.Errorf("skipped %q: uncommitted/untracked changes (commit, or `noz rm %s --force`)", name, slug)
+	}
+
+	// Clean worktree → --force is safe here (nothing to lose; handles locks).
+	// Falls back to RemoveAll for non-worktree scratch dirs.
 	if err := exec.Command("git", "worktree", "remove", "--force", path).Run(); err != nil {
-		// Fall back to rm -rf for scratch dirs or if git worktree remove fails
 		if err := os.RemoveAll(path); err != nil {
 			return err
 		}
 	}
 
-	// Kill tmux session if somehow still around
 	if tmuxHasSession(slug) {
 		exec.Command("tmux", "kill-session", "-t", slug).Run()
 	}

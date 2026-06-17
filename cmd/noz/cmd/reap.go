@@ -168,12 +168,41 @@ func agentProcPID(tmuxBin, session, agentName string, pi procInfo) string {
 	return ""
 }
 
+// cmdMentionsAgent reports whether a command line refers to the agent as a
+// whole token / path component — not a loose substring. So "claude" matches
+// "node /x/claude/cli.js" but a short name like "pi" won't match "python".
+func cmdMentionsAgent(cmd, agent string) bool {
+	for i := 0; ; {
+		j := strings.Index(cmd[i:], agent)
+		if j < 0 {
+			return false
+		}
+		j += i
+		before := byte('/') // treat string start as a boundary
+		if j > 0 {
+			before = cmd[j-1]
+		}
+		after := byte('/') // treat string end as a boundary
+		if end := j + len(agent); end < len(cmd) {
+			after = cmd[end]
+		}
+		if !isWordByte(before) && !isWordByte(after) {
+			return true
+		}
+		i = j + 1
+	}
+}
+
+func isWordByte(b byte) bool {
+	return b == '_' || (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
+}
+
 func (pi procInfo) findAgent(pid, agentName string, seen map[string]bool) string {
 	if seen[pid] {
 		return ""
 	}
 	seen[pid] = true
-	if strings.Contains(pi.cmd[pid], agentName) {
+	if cmdMentionsAgent(pi.cmd[pid], agentName) {
 		return pid
 	}
 	for _, c := range pi.children[pid] {
