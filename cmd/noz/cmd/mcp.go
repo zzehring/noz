@@ -57,6 +57,13 @@ func runMCP(ctx context.Context) error {
 			"user between their workstreams. Only works when running inside tmux.",
 	}, mcpSwitch)
 
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "noz_back",
+		Description: "Hop the user's tmux client back to the previous session (their last " +
+			"hop). Use to return them where they came from. noz_status reports the last " +
+			"session under \"last\".",
+	}, mcpBack)
+
 	return s.Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -146,4 +153,22 @@ func mcpSwitch(ctx context.Context, req *mcp.CallToolRequest, in mcpSwitchInput)
 		return nil, mcpSwitchOutput{Message: fmt.Sprintf("switch failed: %v", err)}, nil
 	}
 	return nil, mcpSwitchOutput{Switched: true, Message: "switched to " + in.Slug}, nil
+}
+
+func mcpBack(ctx context.Context, req *mcp.CallToolRequest, in mcpEmptyInput) (*mcp.CallToolResult, mcpSwitchOutput, error) {
+	last := lastTmuxSession()
+	if last == "" {
+		return nil, mcpSwitchOutput{Message: "no previous session to hop back to"}, nil
+	}
+	if os.Getenv("TMUX") == "" {
+		return nil, mcpSwitchOutput{Message: "not running inside tmux — can't switch the client from here"}, nil
+	}
+	tmuxBin, err := exec.LookPath("tmux")
+	if err != nil {
+		return nil, mcpSwitchOutput{Message: "tmux not found"}, nil
+	}
+	if err := exec.Command(tmuxBin, "switch-client", "-l").Run(); err != nil {
+		return nil, mcpSwitchOutput{Message: fmt.Sprintf("back failed: %v", err)}, nil
+	}
+	return nil, mcpSwitchOutput{Switched: true, Message: "hopped back to " + last}, nil
 }

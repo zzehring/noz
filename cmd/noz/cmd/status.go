@@ -17,6 +17,7 @@ type statusInfo struct {
 	Branch     string `json:"branch,omitempty"`
 	Agent      string `json:"agent,omitempty"`
 	State      string `json:"state,omitempty"`
+	Last       string `json:"last,omitempty"` // the previous session (last hop)
 	Windows    int    `json:"windows,omitempty"`
 	Attached   bool   `json:"attached"`
 	LastActive string `json:"last_active,omitempty"`
@@ -58,6 +59,7 @@ func gatherStatus() statusInfo {
 			info.LastActive = relativeTime(td.lastActive)
 		}
 		info.State = claudeState(sessionInfo{slug: slug, hasTmux: true, lastActive: td.lastActive})
+		info.Last = lastTmuxSession()
 	}
 	return info
 }
@@ -102,6 +104,9 @@ func runStatus(cmd *cobra.Command, jsonOut bool) error {
 	fmt.Fprintf(w, "  branch  %s\n", branchDisplay(branch))
 	if info.Agent != "" {
 		fmt.Fprintf(w, "  agent   %s\n", info.Agent)
+	}
+	if info.Last != "" {
+		fmt.Fprintf(w, "  last    %s  (noz back)\n", info.Last)
 	}
 	last := info.LastActive
 	if last == "" {

@@ -44,6 +44,7 @@ Run with no arguments to show the session dashboard (same as 'noz ls').`,
 	rootCmd.AddCommand(newLsCmd())
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newSwCmd())
+	rootCmd.AddCommand(newBackCmd())
 	rootCmd.AddCommand(newPathCmd())
 	rootCmd.AddCommand(newMcpCmd())
 	rootCmd.AddCommand(newMvCmd())
@@ -51,6 +52,7 @@ Run with no arguments to show the session dashboard (same as 'noz ls').`,
 	rootCmd.AddCommand(newRestoreCmd())
 	rootCmd.AddCommand(newReapCmd())
 	rootCmd.AddCommand(newPruneCmd())
+	rootCmd.AddCommand(newMetricsCmd())
 	rootCmd.AddCommand(newProfileCmd())
 	rootCmd.AddCommand(newSetupCmd())
 

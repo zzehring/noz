@@ -578,6 +578,20 @@ func currentTmuxSession() string {
 	return strings.TrimSpace(string(out))
 }
 
+// lastTmuxSession returns the session this client was attached to just before
+// the current one. tmux tracks this per client, so noz keeps no state of its
+// own. Empty when not in tmux or there's no previous session.
+func lastTmuxSession() string {
+	if os.Getenv("TMUX") == "" {
+		return ""
+	}
+	out, err := exec.Command("tmux", "display-message", "-p", "#{client_last_session}").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // tmuxSessionNames lists the names of all active tmux sessions.
 func tmuxSessionNames() []string {
 	out, err := exec.Command("tmux", "ls", "-F", "#S").Output()
