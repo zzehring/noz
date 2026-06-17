@@ -185,6 +185,9 @@ func runPairPR(prNumber string, depth int, profile, agentName string, force bool
 	}
 
 	slug := "review-" + prNumber
+	if err := validSlug(slug); err != nil {
+		return err
+	}
 	if !force {
 		if other, live := liveSessionRepo(slug); live && other != "" && other != repo {
 			return fmt.Errorf("slug %q is already a live session in repo %q — use --force", slug, other)
@@ -464,21 +467,21 @@ func addToExclude(path, pattern string) {
 	f.WriteString(pattern + "\n")
 }
 
-// validSlug rejects names that could escape the worktree root or confuse
-// tmux/git. Anything that becomes a path or a tmux session name must be a
-// simple name: no separators, no traversal, no leading dash/dot, no spaces.
-func validSlug(slug string) error {
-	if slug == "" {
-		return fmt.Errorf("empty session name")
+// validSlug rejects names that could escape a directory or confuse tmux/git.
+// Anything that becomes a path or a tmux session name (slugs, profile names)
+// must be simple: no separators, no traversal, no leading dash/dot, no spaces.
+func validSlug(name string) error {
+	if name == "" {
+		return fmt.Errorf("empty name")
 	}
-	if strings.ContainsAny(slug, `/\`) {
-		return fmt.Errorf("invalid session name %q: no '/' or '\\'", slug)
+	if strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("invalid name %q: no '/' or '\\'", name)
 	}
-	if strings.ContainsAny(slug, " \t\n") {
-		return fmt.Errorf("invalid session name %q: no whitespace", slug)
+	if strings.ContainsAny(name, " \t\n") {
+		return fmt.Errorf("invalid name %q: no whitespace", name)
 	}
-	if strings.HasPrefix(slug, "-") || strings.HasPrefix(slug, ".") {
-		return fmt.Errorf("invalid session name %q: cannot start with '-' or '.'", slug)
+	if strings.HasPrefix(name, "-") || strings.HasPrefix(name, ".") {
+		return fmt.Errorf("invalid name %q: cannot start with '-' or '.'", name)
 	}
 	return nil
 }
@@ -486,6 +489,16 @@ func validSlug(slug string) error {
 func inGitRepo() bool {
 	err := exec.Command("git", "rev-parse", "--show-toplevel").Run()
 	return err == nil
+}
+
+// isNozSession reports whether a live tmux session was created by noz (it
+// carries the NOZ_SLUG tag). Used to avoid acting on unrelated tmux sessions.
+func isNozSession(slug string) bool {
+	out, err := exec.Command("tmux", "show-environment", "-t", slug, "NOZ_SLUG").Output()
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(string(out)), "NOZ_SLUG=")
 }
 
 // liveSessionRepo reports the NOZ_REPO of a live tmux session named slug, and

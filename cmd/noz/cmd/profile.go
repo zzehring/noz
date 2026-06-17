@@ -74,6 +74,9 @@ func newProfileCreateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validSlug(name); err != nil {
+				return err
+			}
 			dir := profilesDir()
 			if err := os.MkdirAll(dir, 0755); err != nil {
 				return fmt.Errorf("creating profiles dir: %w", err)
@@ -129,6 +132,9 @@ func newProfileEditCmd() *cobra.Command {
 		ValidArgsFunction: completeProfileNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validSlug(name); err != nil {
+				return err
+			}
 			path := filepath.Join(profilesDir(), name+".md")
 			if _, err := os.Stat(path); os.IsNotExist(err) {
 				return fmt.Errorf("profile %q not found at %s (use 'noz profile create %s')", name, path, name)
@@ -146,6 +152,9 @@ func newProfileShowCmd() *cobra.Command {
 		ValidArgsFunction: completeProfileNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validSlug(name); err != nil {
+				return err
+			}
 			// Try user profile first
 			path := filepath.Join(profilesDir(), name+".md")
 			if content, err := os.ReadFile(path); err == nil {

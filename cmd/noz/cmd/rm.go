@@ -68,26 +68,28 @@ func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 		}
 	}
 
-	// Kill tmux session if it exists
+	// Kill tmux session if it exists — but only if it's noz-managed, so we
+	// never nuke an unrelated tmux session that happens to share the name.
 	if tmuxHasSession(slug) {
-		exec.Command("tmux", "kill-session", "-t", slug).Run()
-		fmt.Fprintf(os.Stderr, "noz: killed tmux session %s\n", slug)
-		removed = true
+		if isNozSession(slug) {
+			exec.Command("tmux", "kill-session", "-t", slug).Run()
+			fmt.Fprintf(os.Stderr, "noz: killed tmux session %s\n", slug)
+			removed = true
+		} else {
+			fmt.Fprintf(os.Stderr, "noz: tmux session %q isn't noz-managed — leaving it (use `tmux kill-session -t %s` if you mean to)\n", slug, slug)
+		}
 	}
 
-	// Delete branch if requested
+	// Delete branch if requested. Use a safe delete (-d) that refuses to drop
+	// unmerged commits; never silently force-delete.
 	if deleteBranch {
 		if err := runGit("branch", "-d", slug); err != nil {
-			// Try force delete if normal delete fails
-			if err := runGit("branch", "-D", slug); err != nil {
-				fmt.Fprintf(os.Stderr, "noz: could not delete branch %s\n", slug)
-			} else {
-				fmt.Fprintf(os.Stderr, "noz: force-deleted branch %s\n", slug)
-			}
+			fmt.Fprintf(os.Stderr, "noz: did not delete branch %s — it may have unmerged commits.\n", slug)
+			fmt.Fprintf(os.Stderr, "noz: run `git branch -D %s` yourself if you're sure.\n", slug)
 		} else {
 			fmt.Fprintf(os.Stderr, "noz: deleted branch %s\n", slug)
+			removed = true
 		}
-		removed = true
 	}
 
 	if !removed {
