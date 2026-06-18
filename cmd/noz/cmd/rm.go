@@ -17,12 +17,12 @@ func newRmCmd() *cobra.Command {
 	var deleteBranch bool
 
 	cmd := &cobra.Command{
-		Use:               "rm <slug>",
-		Short:             "Remove a pairing session (worktree + tmux)",
-		Args:              cobra.ExactArgs(1),
+		Use:               "rm <slug>...",
+		Short:             "Remove one or more pairing sessions (worktree + tmux)",
+		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: completeTmuxSessions,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRm(args[0], force, keepWorktree, deleteBranch)
+			return runRmMulti(args, force, keepWorktree, deleteBranch)
 		},
 	}
 
@@ -31,6 +31,26 @@ func newRmCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&deleteBranch, "delete-branch", false, "also delete the local branch")
 
 	return cmd
+}
+
+// runRmMulti removes each named session independently. A failure on one (bad
+// name, nothing found) is reported and skipped, never aborting the rest — so
+// `noz rm a b c` cleans up everything it can in one pass.
+func runRmMulti(slugs []string, force, keepWorktree, deleteBranch bool) error {
+	var failed []string
+	for _, slug := range slugs {
+		if err := runRm(slug, force, keepWorktree, deleteBranch); err != nil {
+			fmt.Fprintf(os.Stderr, "noz: %s: %v\n", slug, err)
+			failed = append(failed, slug)
+		}
+	}
+	if len(slugs) > 1 {
+		fmt.Fprintf(os.Stderr, "noz: removed %d of %d session(s)\n", len(slugs)-len(failed), len(slugs))
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("could not remove: %s", strings.Join(failed, ", "))
+	}
+	return nil
 }
 
 func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
