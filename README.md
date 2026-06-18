@@ -32,8 +32,10 @@ noz ls -A                        # ...across all repos
 noz sw                           # fzf-pick a live session and jump to it
 noz status                       # where am I? (slug, repo, branch, agent, state)
 
+noz spawn fix-flaky --task "..." # create a task-scoped offshoot (seeds context)
+noz close                        # end the session you're in; hop back to parent
 noz mv bug-123 bug-124           # rename across worktree + tmux + branch
-noz rm feature-auth              # tear down worktree + tmux
+noz rm feature-auth bug-123      # tear down one or more sessions
 ```
 
 **Agents:** noz launches and detects `claude`, `opencode`, `codex`, `gemini`,
@@ -63,8 +65,9 @@ cf (2/3)
 ## Profiles
 
 A profile is a markdown file with optional YAML frontmatter that shapes a new
-session — the body becomes the session's `CLAUDE.md`, and `windows:` open tmux
-windows alongside your shell.
+session — the body becomes the session's **context** (written to the `.noz`
+brain, never the repo tree; the agent is launched with a directive to read it),
+and `windows:` open tmux windows alongside your shell.
 
 ```bash
 noz pair incident-42 --profile troubleshoot   # opens k9s + an agent window
@@ -131,10 +134,12 @@ p10k segment that surfaces `working` / `waiting` next to your prompt.
 
 ## Agent integration (MCP)
 
-`noz mcp` runs an MCP server over stdio so a coding agent can *see your
-sessions* — list them, read the current one, and know what else you're working
-on across contexts. It's stateless (just reads fs/tmux), so the agent spawns it
-as a subprocess; no daemon, ports, or auth.
+`noz mcp` runs an MCP server over stdio so a coding agent can *see, navigate,
+and spawn* your sessions — know what else is in progress, move you between
+contexts, and fan out task-scoped offshoots. It's stateless (just reads
+fs/tmux), so the agent spawns it as a subprocess; no daemon, ports, or auth.
+**Navigation is free; every create/destroy is gated** — your agent's tool-call
+confirmation is the human-in-the-loop checkpoint.
 
 ```bash
 noz setup mcp      # prints how to register it
@@ -150,7 +155,26 @@ Register it with Claude Code either way:
 claude mcp add noz -- noz mcp     # user scope
 ```
 
-Tools today (read-only): `noz_sessions`, `noz_status`. Navigation/spawn come next.
+Tools:
+- **See** (read-only): `noz_sessions`, `noz_status`
+- **Navigate** (free): `noz_switch`, `noz_back`
+- **Act** (gated — you confirm): `noz_spawn`, `noz_rm`
+
+### Agentic offshoots
+
+The payoff of the act-tools is a human-gated fan-out loop:
+
+```
+noz_spawn (gated) → agent works on its own isolated branch → reports back
+                  → you review and merge
+```
+
+`noz spawn` (or `noz_spawn`) creates a task-scoped **offshoot** — its own
+worktree, tmux session, and a seeded context file — tagged with the session it
+was spawned from (`NOZ_PARENT`), so `noz close` returns you there when the work
+is done. The agent works *contained* on its branch (it can't touch `main` or
+its siblings), and you bring the work back deliberately. The gated **merge**
+bookend that closes this loop is in progress.
 
 ## Observability (opt-in)
 
@@ -194,13 +218,15 @@ noz setup claude --remove --project-only            # undo
 
 | Command | Description |
 |---------|-------------|
-| `noz pair <slug>` | Start/attach a session (worktree + tmux); `--pr`, `--profile`, `--agent` |
+| `noz pair <slug>` | Start/attach a session (worktree + tmux); `--pr`, `--profile`, `--agent`, `--detach` |
+| `noz spawn <slug>` | Create a task-scoped offshoot (worktree + seeded context); `--task`, `--source`, `--launch` |
 | `noz ls [filter]` | Session dashboard (`-A` all repos, `--active`/`--idle`) |
 | `noz sw [filter]` | Fuzzy-pick a live session and switch to it |
 | `noz status` | Current session context (`--json` for a prompt segment) |
 | `noz path <slug>` | Print a session's worktree dir (`cd "$(noz path x)"`) |
 | `noz mv <old> <new>` | Rename a session across worktree + tmux + branch |
-| `noz rm <slug>` | Remove a session (`--keep-worktree`, `--delete-branch`) |
+| `noz close` | End the session you're in; hop to parent/last, then tear down |
+| `noz rm <slug>...` | Remove one or more sessions (`-y`/`--force`, `--keep-worktree`, `--delete-branch`) |
 | `noz reap [filter]` | Kill idle agents to reclaim memory |
 | `noz prune [filter]` | Remove stale worktrees with no live session |
 | `noz restore [filter]` | Re-create sessions that were live before a reboot |
@@ -214,6 +240,9 @@ noz setup claude --remove --project-only            # undo
 - [x] Stateless session dashboard, fuzzy switch, status
 - [x] Profiles with tmux windows; agent registry + detection
 - [x] Lifecycle: `reap` (memory), `prune`, `restore` (reboot recovery)
+- [x] MCP surface — agent can see / navigate / spawn / tear down sessions (create + destroy gated)
+- [x] Agentic offshoots — `spawn` task-scoped sessions, `NOZ_PARENT` lineage, `close` to return
+- [ ] Gated `merge` bookend — a fast review surface + PR/local merge to close the loop _(in progress)_
+- [ ] Observability — live "what's the agent doing right now" view (`noz top`), built on the gate
 - [ ] Isolation providers (v2) — run agents in microVMs ([`grafana/umm`](https://github.com/grafana/umm))
       for hard memory caps + isolation; `noz` stays the orchestrator
-- [ ] MCP surface so an agent can drive `noz` itself (list / switch / spawn)
