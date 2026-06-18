@@ -115,12 +115,5 @@ func mainRepoDir() string {
 // sessionParent returns the NOZ_PARENT lineage tag of a session (the session it
 // was spawned from), or "" if unset.
 func sessionParent(slug string) string {
-	out, err := exec.Command("tmux", "show-environment", "-t", slug, "NOZ_PARENT").Output()
-	if err != nil {
-		return ""
-	}
-	if v, ok := strings.CutPrefix(strings.TrimSpace(string(out)), "NOZ_PARENT="); ok {
-		return v
-	}
-	return ""
+	return tmuxSessionEnv(slug, "NOZ_PARENT")
 }

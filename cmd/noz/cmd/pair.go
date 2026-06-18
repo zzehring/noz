@@ -559,6 +559,20 @@ func isNozSession(slug string) bool {
 	return strings.HasPrefix(strings.TrimSpace(string(out)), "NOZ_SLUG=")
 }
 
+// tmuxSessionEnv returns the value of a session-level tmux environment variable,
+// or "" if the session or variable doesn't exist (or is set but empty). Stateless
+// lineage/metadata (NOZ_PARENT, NOZ_AUTO_RETURN) rides on these.
+func tmuxSessionEnv(slug, key string) string {
+	out, err := exec.Command("tmux", "show-environment", "-t", slug, key).Output()
+	if err != nil {
+		return ""
+	}
+	if v, ok := strings.CutPrefix(strings.TrimSpace(string(out)), key+"="); ok {
+		return v
+	}
+	return ""
+}
+
 // liveSessionRepo reports the NOZ_REPO of a live tmux session named slug, and
 // whether such a session exists. repo is "" for a session that exists but
 // isn't noz-tagged.
