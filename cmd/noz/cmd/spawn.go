@@ -100,6 +100,7 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 	if err := writeOffshootContext(repo, spec.Slug, spec.Task, parent); err != nil {
 		return "", err
 	}
+	grantContextRead(wtDir, repo) // let the agent read its context without prompting
 
 	tmuxBin, err := exec.LookPath("tmux")
 	if err != nil {

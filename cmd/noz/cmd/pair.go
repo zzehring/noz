@@ -201,6 +201,7 @@ func runPairWorktree(slug, baseBranch, profile, agentName string, force bool) er
 		windows = w
 		if wrote {
 			ctxRef = contextRef(slug)
+			grantContextRead(wtDir, repo)
 		}
 	}
 
@@ -278,6 +279,7 @@ func runPairPR(prNumber string, depth int, profile, agentName string, force bool
 			windows = w
 			if wrote {
 				ctxRef = contextRef(slug)
+				grantContextRead(wtDir, repo)
 			}
 		}
 	}

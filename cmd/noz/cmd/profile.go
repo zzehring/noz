@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -447,6 +448,83 @@ func contextFilePath(repo, slug string) string {
 // (via the .noz symlink) — what we tell the agent to read.
 func contextRef(slug string) string {
 	return ".noz/context/" + slug + ".md"
+}
+
+// grantContextRead lets an agent in this worktree read its .noz context without
+// a per-read permission prompt. The .noz symlink points outside the workspace,
+// which Claude Code gates by default — so the agent's very first act (reading
+// its own seeded marching orders) would otherwise prompt.
+//
+// It writes a scoped, gitignored .claude/settings.local.json: reads of the brain
+// allowed (both the symlink path and its resolved target, which Claude checks
+// together), edits of the brain denied. A new file in a noz-created worktree,
+// scoped read-only to noz's own brain — not trampling user config, and trivially
+// reversible. Best-effort and idempotent; opt out with NOZ_NO_GRANT_CONTEXT.
+func grantContextRead(wtDir, repo string) {
+	if os.Getenv("NOZ_NO_GRANT_CONTEXT") != "" {
+		return
+	}
+	brain := filepath.Join(nozRoot(), ".noz", repo)
+	absRead := "Read(//" + strings.TrimPrefix(brain, "/") + "/**)"
+	absEdit := "Edit(//" + strings.TrimPrefix(brain, "/") + "/**)"
+
+	dir := filepath.Join(wtDir, ".claude")
+	path := filepath.Join(dir, "settings.local.json")
+
+	m := map[string]any{}
+	if data, err := os.ReadFile(path); err == nil {
+		json.Unmarshal(data, &m) // best-effort merge into any existing file
+	}
+	mergeStringList(m, "additionalDirectories", brain)
+	perms := childMap(m, "permissions")
+	mergeStringList(perms, "allow", "Read(.noz/**)", absRead)
+	mergeStringList(perms, "deny", "Edit(.noz/**)", absEdit)
+
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return // best-effort — the agent will just prompt, no harm
+	}
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return
+	}
+	os.WriteFile(path, append(data, '\n'), 0644)
+
+	// Keep it out of git so noz never dirties the tree. settings.local.json is
+	// Claude's own gitignore convention, but don't assume the repo set it up.
+	if mainGitDir := resolveMainGitDir(wtDir); mainGitDir != "" {
+		addToExclude(filepath.Join(mainGitDir, "info", "exclude"), ".claude/settings.local.json")
+	}
+}
+
+// childMap returns m[key] as a map, creating it if absent.
+func childMap(m map[string]any, key string) map[string]any {
+	if c, ok := m[key].(map[string]any); ok {
+		return c
+	}
+	c := map[string]any{}
+	m[key] = c
+	return c
+}
+
+// mergeStringList adds vals to m[key] (a JSON string array) without duplicates.
+func mergeStringList(m map[string]any, key string, vals ...string) {
+	var list []any
+	if existing, ok := m[key].([]any); ok {
+		list = existing
+	}
+	seen := map[string]bool{}
+	for _, v := range list {
+		if s, ok := v.(string); ok {
+			seen[s] = true
+		}
+	}
+	for _, v := range vals {
+		if !seen[v] {
+			list = append(list, v)
+			seen[v] = true
+		}
+	}
+	m[key] = list
 }
 
 func listAvailableProfiles() []string {
