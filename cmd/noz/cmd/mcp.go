@@ -64,6 +64,18 @@ func runMCP(ctx context.Context) error {
 			"session under \"last\".",
 	}, mcpBack)
 
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "noz_spawn",
+		Description: "Create one or more task-scoped 'offshoot' sessions (git worktree + " +
+			"tmux) in the current repo, each seeded with its task as context and tagged " +
+			"with the current session as its parent (so `noz close` returns the user there). " +
+			"This CREATES worktrees/sessions — a gated action; the user confirms it. Set " +
+			"launch=true to also start the coding agent in each (reading its seeded context) " +
+			"when the user wants to begin working immediately; leave it false to just stage " +
+			"them. Fill slug/task/source yourself from the user's intent (issues, PRs, the " +
+			"conversation).",
+	}, mcpSpawn)
+
 	return s.Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -153,6 +165,67 @@ func mcpSwitch(ctx context.Context, req *mcp.CallToolRequest, in mcpSwitchInput)
 		return nil, mcpSwitchOutput{Message: fmt.Sprintf("switch failed: %v", err)}, nil
 	}
 	return nil, mcpSwitchOutput{Switched: true, Message: "switched to " + in.Slug}, nil
+}
+
+// --- noz_spawn ---
+
+type mcpSpawnSpec struct {
+	Slug   string `json:"slug" jsonschema:"short kebab-case session name, e.g. fix-flaky or review-1234"`
+	Task   string `json:"task" jsonschema:"what this offshoot should work on; becomes its seeded context"`
+	Source string `json:"source,omitempty" jsonschema:"base branch to start from; empty means fresh from the current HEAD"`
+}
+
+type mcpSpawnInput struct {
+	Sessions []mcpSpawnSpec `json:"sessions" jsonschema:"the offshoot sessions to create"`
+	Launch   bool           `json:"launch,omitempty" jsonschema:"also start the coding agent in each, reading its context (default false: stage only)"`
+	Agent    string         `json:"agent,omitempty" jsonschema:"agent to launch when launch=true (default claude)"`
+}
+
+type mcpSpawnResult struct {
+	Slug  string `json:"slug"`
+	Dir   string `json:"dir,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+type mcpSpawnOutput struct {
+	Created []mcpSpawnResult `json:"created"`
+	Parent  string           `json:"parent,omitempty"`
+	Message string           `json:"message"`
+}
+
+func mcpSpawn(ctx context.Context, req *mcp.CallToolRequest, in mcpSpawnInput) (*mcp.CallToolResult, mcpSpawnOutput, error) {
+	parent := currentTmuxSession()
+	agentName := in.Agent
+	if agentName == "" {
+		agentName = "claude"
+	}
+
+	out := mcpSpawnOutput{Parent: parent}
+	created, failed := 0, 0
+	for _, s := range in.Sessions {
+		dir, err := spawnOffshoot(spawnSpec{Slug: s.Slug, Task: s.Task, Source: s.Source}, parent, agentName, in.Launch)
+		r := mcpSpawnResult{Slug: s.Slug, Dir: dir}
+		if err != nil {
+			r.Error = err.Error()
+			failed++
+		} else {
+			created++
+		}
+		out.Created = append(out.Created, r)
+	}
+
+	verb := "staged"
+	if in.Launch {
+		verb = "launched"
+	}
+	out.Message = fmt.Sprintf("%s %d offshoot session(s)", verb, created)
+	if failed > 0 {
+		out.Message += fmt.Sprintf(", %d failed", failed)
+	}
+	if created > 0 {
+		out.Message += ". Use noz_switch to move the user into one."
+	}
+	return nil, out, nil
 }
 
 func mcpBack(ctx context.Context, req *mcp.CallToolRequest, in mcpEmptyInput) (*mcp.CallToolResult, mcpSwitchOutput, error) {
