@@ -24,8 +24,9 @@ type sessionInfo struct {
 	windows    int
 	lastActive time.Time
 	attached   bool
-	agent      string // detected coding agent (claude, opencode, ...), or ""
-	state      string // working | waiting | needs-you (live sessions only)
+	agent      string    // detected coding agent (claude, opencode, ...), or ""
+	state      string    // working | waiting | needs-you (live sessions only)
+	created    time.Time // worktree birth time — durable, survives reboot/restore
 }
 
 // defaultMinCategorySize is the minimum number of sessions for a prefix
@@ -141,7 +142,7 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 		if showRepo {
 			repoHdr = "  repo"
 		}
-		fmt.Fprintf(w, "%s    %-*s  %-9s  win  last%s%s\n", cGray, maxSlug, "", "state", repoHdr, cReset)
+		fmt.Fprintf(w, "%s    %-*s  %-9s  win  last    created%s%s\n", cGray, maxSlug, "", "state", repoHdr, cReset)
 	}
 
 	// Render
@@ -217,6 +218,15 @@ func strandedSessions(sessions []sessionInfo) []string {
 	return out
 }
 
+// createdStr renders a session's creation time as a short relative string, or
+// "" when birth time isn't available (e.g. a filesystem without btime).
+func createdStr(s sessionInfo) string {
+	if s.created.IsZero() {
+		return ""
+	}
+	return relativeTime(s.created)
+}
+
 func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {
 	name := s.slug
 	if len(name) > slugWidth {
@@ -246,17 +256,19 @@ func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {
 			idleStr = relativeTime(s.lastActive)
 		}
 
-		fmt.Fprintf(w, "  %s %-*s  %s%-9s%s  %s%-3s%s  %s%-6s%s%s\n",
+		fmt.Fprintf(w, "  %s %-*s  %s%-9s%s  %s%-3s%s  %s%-6s%s  %s%-7s%s%s\n",
 			marker, slugWidth, name,
 			stateColor, stateLabel, cReset,
 			cCyan, winStr, cReset,
 			cYellow, idleStr, cReset,
+			cGray, createdStr(s), cReset,
 			repoStr)
 	} else {
 		marker := cGray + "○" + cReset
-		fmt.Fprintf(w, "  %s %s%-*s%s  %-9s  %-3s  %-6s%s\n",
+		fmt.Fprintf(w, "  %s %s%-*s%s  %-9s  %-3s  %-6s  %s%-7s%s%s\n",
 			marker, cDim, slugWidth, name, cReset,
 			"", "", "",
+			cGray, createdStr(s), cReset,
 			repoStr)
 	}
 }
@@ -306,6 +318,9 @@ func discoverSessions() ([]sessionInfo, error) {
 			s.agent = td.agent
 		}
 
+		if fi, err := e.Info(); err == nil {
+			s.created = fileBirthtime(fi)
+		}
 		s.state = claudeState(s)
 		s.category = categorizeSlug(slug)
 		sessions = append(sessions, s)
