@@ -64,24 +64,35 @@ func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 
 	// Don't saw off the branch you're sitting on: refuse to remove the session
 	// you're currently inside (killing it would yank you out, and its worktree
-	// may be your CWD). Hop away first, or run this from another session.
+	// may be your CWD). Use `noz close` (it hops you away first), or run this
+	// from another session.
 	if slug == currentTmuxSession() {
-		return fmt.Errorf("you're in %q — `noz back` or switch away first, or run `noz rm %s` from another session", slug, slug)
+		return fmt.Errorf("you're in %q — use `noz close` to end it, or run `noz rm %s` from another session", slug, slug)
 	}
 
 	root := nozRoot()
+	wtDir, scratchDir := sessionDirs(slug, root)
+	return teardownSession(slug, wtDir, scratchDir, root, force, keepWorktree, deleteBranch)
+}
 
-	// Try to find the worktree directory
-	var wtDir string
+// sessionDirs resolves a session's worktree and scratch directories from the
+// current repo context. wtDir is empty when not in a git repo.
+func sessionDirs(slug, root string) (wtDir, scratchDir string) {
 	if inGitRepo() {
-		repo, err := repoName()
-		if err == nil {
+		if repo, err := repoName(); err == nil {
 			wtDir = filepath.Join(root, repo+"-"+slug)
 		}
 	}
-	// Also check scratch
-	scratchDir := filepath.Join(root, "scratch-"+slug)
+	scratchDir = filepath.Join(root, "scratch-"+slug)
+	return wtDir, scratchDir
+}
 
+// teardownSession removes a session's resources: worktree (unless keepWorktree),
+// the local branch (if deleteBranch), and finally the tmux session. The tmux
+// kill is LAST so a caller closing its own session (`noz close`) finishes all
+// its work before this process is reaped along with the session. Shared by
+// `noz rm` and `noz close`.
+func teardownSession(slug, wtDir, scratchDir, root string, force, keepWorktree, deleteBranch bool) error {
 	removed := false
 
 	if !keepWorktree {
@@ -100,18 +111,6 @@ func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 		}
 	}
 
-	// Kill tmux session if it exists — but only if it's noz-managed, so we
-	// never nuke an unrelated tmux session that happens to share the name.
-	if tmuxHasSession(slug) {
-		if isNozSession(slug) {
-			exec.Command("tmux", "kill-session", "-t", slug).Run()
-			fmt.Fprintf(os.Stderr, "noz: killed tmux session %s\n", slug)
-			removed = true
-		} else {
-			fmt.Fprintf(os.Stderr, "noz: tmux session %q isn't noz-managed — leaving it (use `tmux kill-session -t %s` if you mean to)\n", slug, slug)
-		}
-	}
-
 	// Delete branch if requested. Use a safe delete (-d) that refuses to drop
 	// unmerged commits; never silently force-delete.
 	if deleteBranch {
@@ -121,6 +120,18 @@ func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 		} else {
 			fmt.Fprintf(os.Stderr, "noz: deleted branch %s\n", slug)
 			removed = true
+		}
+	}
+
+	// Kill tmux session if it exists — but only if it's noz-managed, so we
+	// never nuke an unrelated tmux session that happens to share the name.
+	if tmuxHasSession(slug) {
+		if isNozSession(slug) {
+			exec.Command("tmux", "kill-session", "-t", slug).Run()
+			fmt.Fprintf(os.Stderr, "noz: killed tmux session %s\n", slug)
+			removed = true
+		} else {
+			fmt.Fprintf(os.Stderr, "noz: tmux session %q isn't noz-managed — leaving it (use `tmux kill-session -t %s` if you mean to)\n", slug, slug)
 		}
 	}
 

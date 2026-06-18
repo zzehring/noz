@@ -346,6 +346,16 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 	}
 	shellWindow := strings.TrimSpace(string(out))
 	tagNozSession(tmuxBin, name, name, repo)
+
+	// Record lineage: when spawning from inside another session, remember it as
+	// the parent so `noz close` (and offshoot auto-return) can send you back
+	// where you came from instead of a guess.
+	if insideTmux {
+		if parent := currentTmuxSession(); parent != "" && parent != name {
+			exec.Command(tmuxBin, "set-environment", "-t", name, "NOZ_PARENT", parent).Run()
+		}
+	}
+
 	openWindows(tmuxBin, dir, shellWindow, windows)
 
 	if noAttach {
