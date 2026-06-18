@@ -46,10 +46,17 @@ throwaway-able, so this stays compatible with #1.)
 
 ---
 
-_What noz is: an extension of tmux + git worktrees, made agentic-workflow-native,
-with the human always at the controls. It's for terminal users who've recognized
+_What noz is: it **enhances how engineers and SREs already work — it does not
+take over how they work.** An extension of tmux + git worktrees, made
+agentic-workflow-native, with the human always at the controls. It augments the
+terminal you already live in rather than replacing it with an app of its own, and
+it **puts you in a place to succeed agentically** — context isolated, blast radius
+contained, you reviewing and selecting. It's for terminal users who've recognized
 that the terminal is the best place to run agents and juggle many workstreams at
 once — not a bloated IDE. It should make a newcomer a power user without making
 them learn a pile of arcana: the agent is the friendly UI over a sharp substrate.
 The launcher is table stakes; the cockpit — see, know, go, return, reclaim,
 recover, all human-gated — is the point._
+
+_The test this implies, alongside the rest: does a feature **enhance** how the
+engineer already works, or try to **own/replace** it? Enhance, don't replace._
