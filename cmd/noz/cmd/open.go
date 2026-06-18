@@ -13,7 +13,7 @@ import (
 	"github.com/zzehring/noz/internal/agent"
 )
 
-func newStartCmd() *cobra.Command {
+func newOpenCmd() *cobra.Command {
 	var prNumber string
 	var baseBranch string
 	var noRepo bool
@@ -24,9 +24,8 @@ func newStartCmd() *cobra.Command {
 	var detach bool
 
 	cmd := &cobra.Command{
-		Use:     "start <slug>",
-		Aliases: []string{"pair"}, // back-compat: `noz pair` still works
-		Short:   "Start a session (git worktree + tmux)",
+		Use:   "open <slug>",
+		Short: "Open a session — create it, or attach if it exists (git worktree + tmux)",
 		Long: `Creates a workspace and drops you into a tmux session. In a git repo it
 creates a worktree; otherwise a scratch directory. If you're already inside
 tmux it switches to the session instead of nesting.
@@ -34,16 +33,16 @@ tmux it switches to the session instead of nesting.
 Reuses existing sessions — if the tmux session already exists, attaches to it.
 
 Examples:
-  noz start feature-auth          # worktree + tmux
-  noz start --pr 456              # PR review (shallow, 'review' profile)
-  noz start investigate           # scratch dir (no repo)
-  noz start feature-auth main     # worktree from a specific base branch
-  noz start bug-123 --agent claude  # open the agent in a window`,
+  noz open feature-auth          # worktree + tmux
+  noz open --pr 456              # PR review (shallow, 'review' profile)
+  noz open investigate           # scratch dir (no repo)
+  noz open feature-auth main     # worktree from a specific base branch
+  noz open bug-123 --agent claude  # open the agent in a window`,
 		Args:              cobra.RangeArgs(0, 2),
 		ValidArgsFunction: completeTmuxSessions,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 && prNumber == "" {
-				return fmt.Errorf("usage: noz start <slug> or noz start --pr <number>")
+				return fmt.Errorf("usage: noz open <slug> or noz open --pr <number>")
 			}
 
 			// --detach is the documented form of NOZ_NO_ATTACH: create the
@@ -59,7 +58,7 @@ Examples:
 				if profile == "" {
 					profile = "review" // auto-select for PR sessions
 				}
-				return runStartPR(prNumber, depth, profile, agentName, force)
+				return runOpenPR(prNumber, depth, profile, agentName, force)
 			}
 
 			slug = args[0]
@@ -74,9 +73,9 @@ Examples:
 			}
 
 			if noRepo || !inGitRepo() {
-				return runStartScratch(slug, agentName)
+				return runOpenScratch(slug, agentName)
 			}
-			return runStartWorktree(slug, base, profile, agentName, force)
+			return runOpenWorktree(slug, base, profile, agentName, force)
 		},
 	}
 
@@ -146,7 +145,7 @@ func completeAgents(cmd *cobra.Command, args []string, toComplete string) ([]str
 	return matches, cobra.ShellCompDirectiveNoFileComp
 }
 
-func runStartWorktree(slug, baseBranch, profile, agentName string, force bool) error {
+func runOpenWorktree(slug, baseBranch, profile, agentName string, force bool) error {
 	repo, err := repoName()
 	if err != nil {
 		return err
@@ -218,7 +217,7 @@ func runStartWorktree(slug, baseBranch, profile, agentName string, force bool) e
 	return tmuxSession(slug, wtDir, primary, windows)
 }
 
-func runStartPR(prNumber string, depth int, profile, agentName string, force bool) error {
+func runOpenPR(prNumber string, depth int, profile, agentName string, force bool) error {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return fmt.Errorf("gh CLI not found (needed for --pr)")
 	}
@@ -298,7 +297,7 @@ func runStartPR(prNumber string, depth int, profile, agentName string, force boo
 	return tmuxSession(slug, wtDir, primary, windows)
 }
 
-func runStartScratch(slug, agentName string) error {
+func runOpenScratch(slug, agentName string) error {
 	root := nozRoot()
 	dir := filepath.Join(root, "scratch-"+slug)
 

@@ -162,7 +162,7 @@ func mcpSwitch(ctx context.Context, req *mcp.CallToolRequest, in mcpSwitchInput)
 		return nil, mcpSwitchOutput{Message: err.Error()}, nil
 	}
 	if !tmuxHasSession(in.Slug) {
-		return nil, mcpSwitchOutput{Message: fmt.Sprintf("no live session %q — list with noz_sessions; if it's idle, it needs `noz restore`/`noz start` first", in.Slug)}, nil
+		return nil, mcpSwitchOutput{Message: fmt.Sprintf("no live session %q — list with noz_sessions; if it's idle, it needs `noz restore`/`noz open` first", in.Slug)}, nil
 	}
 	if os.Getenv("TMUX") == "" {
 		return nil, mcpSwitchOutput{Message: "not running inside tmux — can't switch the client from here"}, nil

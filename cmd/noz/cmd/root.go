@@ -19,7 +19,7 @@ func NewRootCmd() *cobra.Command {
 		Long: `noz manages AI-agent sessions as git worktrees + tmux, derived
 live from the filesystem, git, and tmux — no state files to drift.
 
-List and switch sessions (ls, sw), spin up per-task workspaces (start),
+List and switch sessions (ls, sw), spin up per-task workspaces (open),
 shape them with profiles, and clean up (rm, prune, mv).
 
 Optional command-gating against CEL policies is available for agents that
@@ -40,7 +40,7 @@ Run with no arguments to show the session dashboard (same as 'noz ls').`,
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "JSON output for scripting")
 
 	// Session management — the core of noz.
-	rootCmd.AddCommand(newStartCmd())
+	rootCmd.AddCommand(newOpenCmd())
 	rootCmd.AddCommand(newLsCmd())
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newSwCmd())

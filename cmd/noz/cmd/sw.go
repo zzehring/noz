@@ -67,7 +67,7 @@ The history is tmux's own (client_last_session) — noz stores nothing.`,
 
 func runSw(cmd *cobra.Command, filter string) error {
 	if _, err := exec.LookPath("fzf"); err != nil {
-		return fmt.Errorf("fzf not found — install it (brew install fzf) or use 'noz start <slug>'")
+		return fmt.Errorf("fzf not found — install it (brew install fzf) or use 'noz open <slug>'")
 	}
 
 	sessions, err := discoverSessions()

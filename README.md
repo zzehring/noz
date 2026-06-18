@@ -23,9 +23,9 @@ go install github.com/zzehring/noz/cmd/noz@latest
 ## Quick start
 
 ```bash
-noz start feature-auth            # git worktree + tmux session
-noz start --pr 456                # review a PR (shallow clone, review profile)
-noz start bug-123 --agent claude  # ...and open claude in the first window
+noz open feature-auth            # git worktree + tmux session
+noz open --pr 456                # review a PR (shallow clone, review profile)
+noz open bug-123 --agent claude  # ...and open claude in the first window
 
 noz ls                           # dashboard for the current repo
 noz ls -A                        # ...across all repos
@@ -70,7 +70,7 @@ brain, never the repo tree; the agent is launched with a directive to read it),
 and `windows:` open tmux windows alongside your shell.
 
 ```bash
-noz start incident-42 --profile troubleshoot   # opens k9s + an agent window
+noz open incident-42 --profile troubleshoot   # opens k9s + an agent window
 noz profile list                               # see built-ins + your own
 noz profile create tf-review                   # scaffold one in $EDITOR
 ```
@@ -218,7 +218,7 @@ noz setup claude --remove --project-only            # undo
 
 | Command | Description |
 |---------|-------------|
-| `noz start <slug>` | Start/attach a session (worktree + tmux); `--pr`, `--profile`, `--agent`, `--detach` |
+| `noz open <slug>` | Start/attach a session (worktree + tmux); `--pr`, `--profile`, `--agent`, `--detach` |
 | `noz spawn <slug>` | Create a task-scoped offshoot (worktree + seeded context); `--task`, `--source`, `--launch` |
 | `noz ls [filter]` | Session dashboard (`-A` all repos, `--active`/`--idle`) |
 | `noz sw [filter]` | Fuzzy-pick a live session and switch to it |

@@ -307,7 +307,7 @@ The body and each window cmd are rendered through Go text/template. Available:
   runbook, a language-specific dev loop, etc).
 - Keep the body tight — it is injected into every session that uses it.
 - Write the result to ~/.config/noz/profiles/<name>.md, then tell the user
-  to try it with: noz start <slug> --profile <name>
+  to try it with: noz open <slug> --profile <name>
 `,
 
 	"troubleshoot": `---
