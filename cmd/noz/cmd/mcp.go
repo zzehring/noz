@@ -76,6 +76,16 @@ func runMCP(ctx context.Context) error {
 			"conversation).",
 	}, mcpSpawn)
 
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "noz_rm",
+		Description: "Tear down one or more offshoot sessions by slug — removes each one's git " +
+			"worktree, tmux session, and seeded context file. The destroy bookend to noz_spawn. " +
+			"This DESTROYS worktrees/sessions — a gated action; the user confirms it. Refuses to " +
+			"remove the current session (use noz_back/`noz close` to leave it first). A dirty " +
+			"worktree is left untouched unless force=true (discards uncommitted changes). Set " +
+			"delete_branch=true to also drop each local branch (safe delete — keeps unmerged work).",
+	}, mcpRm)
+
 	return s.Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -224,6 +234,48 @@ func mcpSpawn(ctx context.Context, req *mcp.CallToolRequest, in mcpSpawnInput) (
 	}
 	if created > 0 {
 		out.Message += ". Use noz_switch to move the user into one."
+	}
+	return nil, out, nil
+}
+
+// --- noz_rm ---
+
+type mcpRmInput struct {
+	Slugs        []string `json:"slugs" jsonschema:"the offshoot session slugs to tear down"`
+	Force        bool     `json:"force,omitempty" jsonschema:"discard a dirty worktree instead of leaving it untouched (default false)"`
+	DeleteBranch bool     `json:"delete_branch,omitempty" jsonschema:"also delete each local branch with a safe delete (default false)"`
+}
+
+type mcpRmResult struct {
+	Slug  string `json:"slug"`
+	Error string `json:"error,omitempty"`
+}
+
+type mcpRmOutput struct {
+	Removed []mcpRmResult `json:"removed"`
+	Message string        `json:"message"`
+}
+
+func mcpRm(ctx context.Context, req *mcp.CallToolRequest, in mcpRmInput) (*mcp.CallToolResult, mcpRmOutput, error) {
+	var out mcpRmOutput
+	removed, failed := 0, 0
+	for _, slug := range in.Slugs {
+		// runRm guards against removing the current session and reports nothing
+		// found — reuse it so the MCP path and `noz rm` stay identical.
+		err := runRm(slug, in.Force, false, in.DeleteBranch)
+		r := mcpRmResult{Slug: slug}
+		if err != nil {
+			r.Error = err.Error()
+			failed++
+		} else {
+			removed++
+		}
+		out.Removed = append(out.Removed, r)
+	}
+
+	out.Message = fmt.Sprintf("removed %d offshoot session(s)", removed)
+	if failed > 0 {
+		out.Message += fmt.Sprintf(", %d failed", failed)
 	}
 	return nil, out, nil
 }
