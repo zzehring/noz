@@ -61,6 +61,14 @@ func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 	if err := validSlug(slug); err != nil {
 		return err
 	}
+
+	// Don't saw off the branch you're sitting on: refuse to remove the session
+	// you're currently inside (killing it would yank you out, and its worktree
+	// may be your CWD). Hop away first, or run this from another session.
+	if slug == currentTmuxSession() {
+		return fmt.Errorf("you're in %q — `noz back` or switch away first, or run `noz rm %s` from another session", slug, slug)
+	}
+
 	root := nozRoot()
 
 	// Try to find the worktree directory

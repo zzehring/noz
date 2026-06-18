@@ -21,6 +21,7 @@ func newPairCmd() *cobra.Command {
 	var profile string
 	var agentName string
 	var force bool
+	var detach bool
 
 	cmd := &cobra.Command{
 		Use:   "pair <slug>",
@@ -42,6 +43,12 @@ Examples:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 && prNumber == "" {
 				return fmt.Errorf("usage: noz pair <slug> or noz pair --pr <number>")
+			}
+
+			// --detach is the documented form of NOZ_NO_ATTACH: create the
+			// session but don't attach/switch. Reuses the existing detached path.
+			if detach {
+				os.Setenv("NOZ_NO_ATTACH", "1")
 			}
 
 			var slug string
@@ -81,6 +88,7 @@ Examples:
 	cmd.Flags().StringVar(&agentName, "agent", "", "open a coding agent in a window (claude, opencode, codex, gemini, pi)")
 	cmd.RegisterFlagCompletionFunc("agent", completeAgents)
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "proceed even if the slug is a live session in another repo")
+	cmd.Flags().BoolVarP(&detach, "detach", "d", false, "create the session but don't attach/switch to it")
 
 	return cmd
 }
@@ -303,7 +311,7 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 		// Tag on re-attach (backfills older sessions)
 		tagNozSession(tmuxBin, name, name, repo)
 		if noAttach {
-			fmt.Fprintf(os.Stderr, "noz: session %s exists (NOZ_NO_ATTACH, not attaching)\n", name)
+			fmt.Fprintf(os.Stderr, "noz: session %s exists (detached, not attaching)\n", name)
 			return nil
 		}
 		if insideTmux {
@@ -341,7 +349,7 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 	openWindows(tmuxBin, dir, shellWindow, windows)
 
 	if noAttach {
-		fmt.Fprintf(os.Stderr, "noz: created %s detached (NOZ_NO_ATTACH set)\n", name)
+		fmt.Fprintf(os.Stderr, "noz: created %s detached\n", name)
 		return nil
 	}
 
