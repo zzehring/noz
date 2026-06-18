@@ -13,6 +13,7 @@ import (
 
 func newRmCmd() *cobra.Command {
 	var force bool
+	var yes bool
 	var keepWorktree bool
 	var deleteBranch bool
 
@@ -22,11 +23,14 @@ func newRmCmd() *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: completeTmuxSessions,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runRmMulti(args, force, keepWorktree, deleteBranch)
+			// -y/--yes is a synonym for --force here: the only prompt is the
+			// dirty-worktree discard, so assuming yes means proceeding with it.
+			return runRmMulti(args, force || yes, keepWorktree, deleteBranch)
 		},
 	}
 
-	cmd.Flags().BoolVarP(&force, "force", "f", false, "skip confirmation for dirty worktrees")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "discard a dirty worktree without confirming")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "assume yes to prompts (non-interactive; e.g. discarding a dirty worktree)")
 	cmd.Flags().BoolVar(&keepWorktree, "keep-worktree", false, "only kill tmux session, keep worktree")
 	cmd.Flags().BoolVar(&deleteBranch, "delete-branch", false, "also delete the local branch")
 
@@ -120,16 +124,23 @@ func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 }
 
 func removeWorktree(wtDir, slug string, force bool) error {
-	if !force && worktreeIsDirty(wtDir) {
-		fmt.Fprintf(os.Stderr, "noz: %s has uncommitted changes.\n", wtDir)
-		fmt.Fprint(os.Stderr, "Force-remove anyway? [y/N] ")
-		reader := bufio.NewReader(os.Stdin)
-		reply, _ := reader.ReadString('\n')
-		reply = strings.TrimSpace(strings.ToLower(reply))
-		if reply != "y" && reply != "yes" {
-			fmt.Fprintln(os.Stderr, "noz: aborted")
-			return nil
+	if worktreeIsDirty(wtDir) {
+		if !force {
+			// Non-interactive (agent session, pipe): don't silently abort or
+			// block on stdin — fail with the exact flag to re-run with.
+			if !stdinIsTerminal() {
+				return fmt.Errorf("%s has uncommitted changes; re-run with -y/--force to discard and remove", wtDir)
+			}
+			fmt.Fprintf(os.Stderr, "noz: %s has uncommitted changes.\n", wtDir)
+			fmt.Fprint(os.Stderr, "Force-remove anyway? [y/N] ")
+			reader := bufio.NewReader(os.Stdin)
+			reply, _ := reader.ReadString('\n')
+			reply = strings.TrimSpace(strings.ToLower(reply))
+			if reply != "y" && reply != "yes" {
+				return fmt.Errorf("aborted: %s has uncommitted changes (not removed)", slug)
+			}
 		}
+		// Dirty + (forced or confirmed): git needs --force to drop the worktree.
 		return runGit("worktree", "remove", "--force", wtDir)
 	}
 	return runGit("worktree", "remove", wtDir)
