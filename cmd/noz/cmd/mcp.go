@@ -39,7 +39,7 @@ func runMCP(ctx context.Context) error {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "noz_sessions",
-		Description: "List noz pairing sessions (git worktree + tmux) across all repos, with " +
+		Description: "List noz sessions (git worktree + tmux) across all repos, with " +
 			"each one's live/idle state, the coding agent running in it, working/waiting " +
 			"status, last activity, and repo. Use this to see what else is in progress.",
 	}, mcpSessions)
@@ -162,7 +162,7 @@ func mcpSwitch(ctx context.Context, req *mcp.CallToolRequest, in mcpSwitchInput)
 		return nil, mcpSwitchOutput{Message: err.Error()}, nil
 	}
 	if !tmuxHasSession(in.Slug) {
-		return nil, mcpSwitchOutput{Message: fmt.Sprintf("no live session %q — list with noz_sessions; if it's idle, it needs `noz restore`/`noz pair` first", in.Slug)}, nil
+		return nil, mcpSwitchOutput{Message: fmt.Sprintf("no live session %q — list with noz_sessions; if it's idle, it needs `noz restore`/`noz start` first", in.Slug)}, nil
 	}
 	if os.Getenv("TMUX") == "" {
 		return nil, mcpSwitchOutput{Message: "not running inside tmux — can't switch the client from here"}, nil

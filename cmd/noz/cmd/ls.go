@@ -40,7 +40,7 @@ func newLsCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "ls [filter]",
-		Short: "List pairing sessions",
+		Short: "List sessions",
 		Long: `Lists sessions by scanning worktree directories and cross-referencing
 with tmux. Completely stateless — derives everything from filesystem, git,
 and tmux metadata.

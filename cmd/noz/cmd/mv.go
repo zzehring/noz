@@ -13,7 +13,7 @@ func newMvCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mv <old-slug> <new-slug>",
 		Short: "Rename a session (worktree dir, tmux session, git branch)",
-		Long: `Renames a pairing session across all layers:
+		Long: `Renames a session across all layers:
   1. Renames the worktree directory
   2. Renames the tmux session (if active)
   3. Renames the git branch (if it matches the old slug)

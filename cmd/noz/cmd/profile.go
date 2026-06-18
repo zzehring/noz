@@ -269,7 +269,7 @@ windows:
 # Authoring a noz profile
 
 You are helping the user write a **noz profile**. Profiles live in
-~/.config/noz/profiles/<name>.md and define what a pairing session looks
+~/.config/noz/profiles/<name>.md and define what a session looks
 like: the agent context (the markdown body) and the tmux windows that open
 with the session.
 
@@ -307,7 +307,7 @@ The body and each window cmd are rendered through Go text/template. Available:
   runbook, a language-specific dev loop, etc).
 - Keep the body tight — it is injected into every session that uses it.
 - Write the result to ~/.config/noz/profiles/<name>.md, then tell the user
-  to try it with: noz pair <slug> --profile <name>
+  to try it with: noz start <slug> --profile <name>
 `,
 
 	"troubleshoot": `---

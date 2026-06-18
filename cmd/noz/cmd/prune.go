@@ -19,7 +19,7 @@ func newPruneCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "prune",
-		Short: "Remove stale pairing sessions (no tmux, older than threshold)",
+		Short: "Remove stale sessions (no tmux, older than threshold)",
 		Long: `Finds worktree directories with no active tmux session and older than
 the age threshold, then removes them.
 

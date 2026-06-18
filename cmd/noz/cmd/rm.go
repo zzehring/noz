@@ -19,7 +19,7 @@ func newRmCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:               "rm <slug>...",
-		Short:             "Remove one or more pairing sessions (worktree + tmux)",
+		Short:             "Remove one or more sessions (worktree + tmux)",
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: completeTmuxSessions,
 		RunE: func(cmd *cobra.Command, args []string) error {
