@@ -434,17 +434,19 @@ func applyProfile(wtDir, profileName string, data ProfileData) (windows []profil
 }
 
 // contextFilePath is the canonical location of a session's noz-authored context
-// file in the shared .noz brain (root/.noz/<repo>/<slug>-context.md). Written
-// there — not the repo tree — so it never dirties the worktree; reachable from
-// inside the worktree via the .noz symlink as contextRef(slug).
+// file: a dedicated context/ subdir of the shared .noz brain
+// (root/.noz/<repo>/context/<slug>.md). Kept in its own subdir so it doesn't
+// clutter the brain root (ROADMAP etc., or per-user dirs). Written there — not
+// the repo tree — so it never dirties the worktree; reachable from inside the
+// worktree via the .noz symlink as contextRef(slug).
 func contextFilePath(repo, slug string) string {
-	return filepath.Join(nozRoot(), ".noz", repo, slug+"-context.md")
+	return filepath.Join(nozRoot(), ".noz", repo, "context", slug+".md")
 }
 
 // contextRef is how the context file is referenced from inside the worktree
 // (via the .noz symlink) — what we tell the agent to read.
 func contextRef(slug string) string {
-	return ".noz/" + slug + "-context.md"
+	return ".noz/context/" + slug + ".md"
 }
 
 func listAvailableProfiles() []string {
