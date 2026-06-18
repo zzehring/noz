@@ -94,8 +94,10 @@ Examples:
 }
 
 // agentPrimary returns window 0's spec that launches the named agent, or nil
-// when name is empty. Errors on an unknown agent.
-func agentPrimary(name string) (*profileWindow, error) {
+// when name is empty. Errors on an unknown agent. When contextRef is non-empty
+// and the agent supports an initial prompt, the agent is launched with a
+// directive to read that context file first.
+func agentPrimary(name, contextRef string) (*profileWindow, error) {
 	if name == "" {
 		return nil, nil
 	}
@@ -103,7 +105,34 @@ func agentPrimary(name string) (*profileWindow, error) {
 	if !ok {
 		return nil, fmt.Errorf("unknown agent %q (known: %s)", name, strings.Join(agent.Names(), ", "))
 	}
-	return &profileWindow{Name: a.Name, Cmd: strings.Join(a.Launch, " ")}, nil
+	argv := a.Launch
+	if contextRef != "" {
+		directive := fmt.Sprintf("Read %s for this session's context, then help me with it.", contextRef)
+		argv = a.LaunchWith(directive)
+	}
+	return &profileWindow{Name: a.Name, Cmd: shellJoin(argv)}, nil
+}
+
+// shellJoin renders argv as a POSIX shell command string, quoting each argument
+// so it survives tmux's shell. Used only for noz-authored launch commands and
+// short directives — never to inline untrusted file contents (those live in the
+// context file, which is why only a safe directive ever reaches the shell).
+func shellJoin(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, a := range argv {
+		parts[i] = shellQuote(a)
+	}
+	return strings.Join(parts, " ")
+}
+
+func shellQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if !strings.ContainsAny(s, " \t\n'\"\\$`*?[]{}()&|;<>#~!") {
+		return s // simple token — leave it bare (keeps `claude` clean)
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func completeAgents(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -162,16 +191,20 @@ func runPairWorktree(slug, baseBranch, profile, agentName string, force bool) er
 
 	// Apply profile only on first creation
 	var windows []profileWindow
+	var ctxRef string
 	if created && profile != "" {
 		data := ProfileData{Slug: slug, Repo: repo, Branch: slug}
-		w, err := applyProfile(wtDir, profile, data)
+		w, wrote, err := applyProfile(wtDir, profile, data)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "noz: warning: %v\n", err)
 		}
 		windows = w
+		if wrote {
+			ctxRef = contextRef(slug)
+		}
 	}
 
-	primary, err := agentPrimary(agentName)
+	primary, err := agentPrimary(agentName, ctxRef)
 	if err != nil {
 		return err
 	}
@@ -218,6 +251,7 @@ func runPairPR(prNumber string, depth int, profile, agentName string, force bool
 	}
 
 	var windows []profileWindow
+	var ctxRef string
 	if dirExists(wtDir) {
 		fmt.Fprintf(os.Stderr, "noz: worktree exists at %s, reusing\n", wtDir)
 	} else {
@@ -237,15 +271,18 @@ func runPairPR(prNumber string, depth int, profile, agentName string, force bool
 		// Apply profile on first creation
 		if profile != "" {
 			data := ProfileData{Slug: slug, Repo: repo, PR: prNumber, Branch: branch}
-			w, err := applyProfile(wtDir, profile, data)
+			w, wrote, err := applyProfile(wtDir, profile, data)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "noz: warning: %v\n", err)
 			}
 			windows = w
+			if wrote {
+				ctxRef = contextRef(slug)
+			}
 		}
 	}
 
-	primary, err := agentPrimary(agentName)
+	primary, err := agentPrimary(agentName, ctxRef)
 	if err != nil {
 		return err
 	}
@@ -272,7 +309,7 @@ func runPairScratch(slug, agentName string) error {
 		fmt.Fprintf(os.Stderr, "noz: reusing scratch workspace at %s\n", dir)
 	}
 
-	primary, err := agentPrimary(agentName)
+	primary, err := agentPrimary(agentName, "")
 	if err != nil {
 		return err
 	}

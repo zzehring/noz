@@ -109,6 +109,14 @@ func teardownSession(slug, wtDir, scratchDir, root string, force, keepWorktree, 
 			fmt.Fprintf(os.Stderr, "noz: removed scratch workspace at %s\n", scratchDir)
 			removed = true
 		}
+
+		// Drop the session's noz context file too — it's keyed by repo+slug and
+		// orphaned once the session is gone (no cruft left in the brain).
+		if wtDir != "" {
+			if repo := strings.TrimSuffix(filepath.Base(wtDir), "-"+slug); repo != "" {
+				os.Remove(contextFilePath(repo, slug))
+			}
+		}
 	}
 
 	// Delete branch if requested. Use a safe delete (-d) that refuses to drop

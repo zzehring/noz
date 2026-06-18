@@ -91,7 +91,7 @@ func newProfileCreateCmd() *cobra.Command {
 			// template vars ({{.Slug}}, {{.Repo}}, {{.PR}}, {{.Branch}}).
 			seed := `---
 # Windows opened alongside your shell when this profile is applied.
-# Drop the block if you only want the CLAUDE.md context below.
+# Drop the block if you only want the session context below.
 windows:
   - name: agent
     cmd: claude
@@ -285,11 +285,12 @@ A profile is markdown with optional YAML frontmatter:
     ---
     # Session Context
 
-    ...markdown that becomes the session's CLAUDE.md...
+    ...markdown handed to the agent as this session's context...
 
 - The frontmatter "windows" list opens tmux windows alongside the shell
   (window 0). A window with a "cmd" runs it; without one it's just a shell.
-- The body is written into the session's CLAUDE.md (appended if one exists).
+- The body is written to the session's .noz context file (never the repo tree),
+  and the agent is launched with a directive to read it first.
 - Drop the frontmatter entirely if the profile only sets context.
 
 ## Template variables
@@ -406,26 +407,44 @@ func resolveProfile(name string, data ProfileData) (body string, windows []profi
 	return body, windows, nil
 }
 
-// applyProfile renders a profile, writes the body into the worktree's
-// CLAUDE.md (appending if one exists), and returns the windows to open.
-func applyProfile(wtDir, profileName string, data ProfileData) ([]profileWindow, error) {
+// applyProfile renders a profile, writes the body to the session's noz context
+// file (in the .noz brain — never the repo tree), and returns the windows to
+// open plus whether a context file was written. The agent is launched with a
+// directive to read that file (see agentPrimary), so context is delivered
+// deterministically instead of as an ambient CLAUDE.md.
+func applyProfile(wtDir, profileName string, data ProfileData) (windows []profileWindow, wroteContext bool, err error) {
 	body, windows, err := resolveProfile(profileName, data)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
-	if strings.TrimSpace(body) != "" {
-		claudeMD := filepath.Join(wtDir, "CLAUDE.md")
-		if existing, err := os.ReadFile(claudeMD); err == nil {
-			body = string(existing) + "\n\n" + body
-		}
-		if err := os.WriteFile(claudeMD, []byte(body), 0644); err != nil {
-			return nil, fmt.Errorf("writing profile to CLAUDE.md: %w", err)
-		}
-		fmt.Fprintf(os.Stderr, "noz: applied profile %q to CLAUDE.md\n", profileName)
+	if strings.TrimSpace(body) == "" {
+		return windows, false, nil
 	}
 
-	return windows, nil
+	ctxPath := contextFilePath(data.Repo, data.Slug)
+	if err := os.MkdirAll(filepath.Dir(ctxPath), 0755); err != nil {
+		return windows, false, fmt.Errorf("writing session context: %w", err)
+	}
+	if err := os.WriteFile(ctxPath, []byte(body), 0644); err != nil {
+		return windows, false, fmt.Errorf("writing session context: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "noz: wrote session context to %s\n", contextRef(data.Slug))
+	return windows, true, nil
+}
+
+// contextFilePath is the canonical location of a session's noz-authored context
+// file in the shared .noz brain (root/.noz/<repo>/<slug>-context.md). Written
+// there — not the repo tree — so it never dirties the worktree; reachable from
+// inside the worktree via the .noz symlink as contextRef(slug).
+func contextFilePath(repo, slug string) string {
+	return filepath.Join(nozRoot(), ".noz", repo, slug+"-context.md")
+}
+
+// contextRef is how the context file is referenced from inside the worktree
+// (via the .noz symlink) — what we tell the agent to read.
+func contextRef(slug string) string {
+	return ".noz/" + slug + "-context.md"
 }
 
 func listAvailableProfiles() []string {

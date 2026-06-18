@@ -11,18 +11,37 @@ type Agent struct {
 	Name   string   // canonical id: "claude", "opencode", "codex", ...
 	Launch []string // command to start it in a session (argv; [0] is the binary)
 
+	// promptArgs returns the extra argv to pass an initial prompt to this agent,
+	// or nil if its prompt-passing convention isn't known yet. Only set for
+	// agents we've verified; others simply get no prompt injected.
+	promptArgs func(prompt string) []string
+
 	// match reports whether a tmux pane_current_command belongs to this agent.
 	match func(paneCmd string) bool
 }
 
 // registry is the single source of truth for known agents.
 var registry = []Agent{
-	{Name: "claude", Launch: []string{"claude"}, match: isClaudeCmd},
+	{Name: "claude", Launch: []string{"claude"}, promptArgs: positionalPrompt, match: isClaudeCmd},
 	{Name: "opencode", Launch: []string{"opencode"}, match: exact("opencode")},
 	{Name: "codex", Launch: []string{"codex"}, match: exact("codex")},
 	{Name: "gemini", Launch: []string{"gemini"}, match: exact("gemini")},
 	{Name: "pi", Launch: []string{"pi"}, match: exact("pi")},
 }
+
+// LaunchWith returns the argv to start the agent with an initial prompt. If the
+// prompt is empty or the agent has no known prompt-passing convention, this is
+// just the plain Launch argv.
+func (a Agent) LaunchWith(prompt string) []string {
+	if prompt == "" || a.promptArgs == nil {
+		return a.Launch
+	}
+	return append(append([]string{}, a.Launch...), a.promptArgs(prompt)...)
+}
+
+// positionalPrompt passes the prompt as a trailing positional arg
+// (e.g. `claude "<prompt>"`), Claude Code's convention.
+func positionalPrompt(p string) []string { return []string{p} }
 
 // Lookup returns the agent with the given name.
 func Lookup(name string) (Agent, bool) {
