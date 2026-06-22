@@ -201,7 +201,7 @@ func runOpenWorktree(slug, baseBranch, profile, agentName string, force bool) er
 		windows = w
 		if wrote {
 			ctxRef = contextRef(slug)
-			grantContextRead(wtDir, repo)
+			grantBrainAccess(wtDir, repo)
 		}
 	}
 
@@ -279,7 +279,7 @@ func runOpenPR(prNumber string, depth int, profile, agentName string, force bool
 			windows = w
 			if wrote {
 				ctxRef = contextRef(slug)
-				grantContextRead(wtDir, repo)
+				grantBrainAccess(wtDir, repo)
 			}
 		}
 	}

@@ -460,13 +460,12 @@ func contextRef(slug string) string {
 // together), edits of the brain denied. A new file in a noz-created worktree,
 // scoped read-only to noz's own brain — not trampling user config, and trivially
 // reversible. Best-effort and idempotent; opt out with NOZ_NO_GRANT_CONTEXT.
-func grantContextRead(wtDir, repo string) {
+func grantBrainAccess(wtDir, repo string) {
 	if os.Getenv("NOZ_NO_GRANT_CONTEXT") != "" {
 		return
 	}
 	brain := filepath.Join(nozRoot(), ".noz", repo)
-	absRead := "Read(//" + strings.TrimPrefix(brain, "/") + "/**)"
-	absEdit := "Edit(//" + strings.TrimPrefix(brain, "/") + "/**)"
+	abs := "//" + strings.TrimPrefix(brain, "/") + "/**"
 
 	dir := filepath.Join(wtDir, ".claude")
 	path := filepath.Join(dir, "settings.local.json")
@@ -477,8 +476,20 @@ func grantContextRead(wtDir, repo string) {
 	}
 	mergeStringList(m, "additionalDirectories", brain)
 	perms := childMap(m, "permissions")
-	mergeStringList(perms, "allow", "Read(.noz/**)", absRead)
-	mergeStringList(perms, "deny", "Edit(.noz/**)", absEdit)
+
+	// The .noz brain is shared and *bidirectional* — agents read their seeded
+	// context AND write back-reports/notes. Grant read+write (both the symlink
+	// path and its resolved target, which Claude checks together for allow
+	// rules) so an offshoot never hits a wall and routes around the gate with a
+	// hacky write. Read-only here defeats the whole point of a shared brain.
+	mergeStringList(perms, "allow",
+		"Read(.noz/**)", "Read("+abs+")",
+		"Edit(.noz/**)", "Edit("+abs+")",
+		"Write(.noz/**)", "Write("+abs+")",
+	)
+	// Strip the old read-only deny (migration from earlier versions); deny wins
+	// over allow, so leaving it would keep the brain unwritable.
+	removeFromStringList(perms, "deny", "Edit(.noz/**)", "Edit("+abs+")")
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return // best-effort — the agent will just prompt, no harm
@@ -525,6 +536,26 @@ func mergeStringList(m map[string]any, key string, vals ...string) {
 		}
 	}
 	m[key] = list
+}
+
+// removeFromStringList drops the given values from m[key] (a JSON string array).
+func removeFromStringList(m map[string]any, key string, vals ...string) {
+	existing, ok := m[key].([]any)
+	if !ok {
+		return
+	}
+	drop := map[string]bool{}
+	for _, v := range vals {
+		drop[v] = true
+	}
+	kept := []any{}
+	for _, v := range existing {
+		if s, ok := v.(string); ok && drop[s] {
+			continue
+		}
+		kept = append(kept, v)
+	}
+	m[key] = kept
 }
 
 func listAvailableProfiles() []string {
