@@ -158,7 +158,7 @@ claude mcp add noz -- noz mcp     # user scope
 Tools:
 - **See** (read-only): `noz_sessions`, `noz_status`
 - **Navigate** (free): `noz_switch`, `noz_back`
-- **Act** (gated — you confirm): `noz_spawn`, `noz_rm`
+- **Act** (gated — you confirm): `noz_spawn`, `noz_rm`, `noz_close`
 
 ### Agentic offshoots
 

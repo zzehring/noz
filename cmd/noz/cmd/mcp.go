@@ -86,6 +86,17 @@ func runMCP(ctx context.Context) error {
 			"delete_branch=true to also drop each local branch (safe delete — keeps unmerged work).",
 	}, mcpRm)
 
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "noz_close",
+		Description: "Close the CURRENT session (the one you're in): hop the user to its parent " +
+			"(else last session, else detach to the shell), then tear down its worktree + tmux " +
+			"session. The in-session counterpart to noz_rm — use when the work here is done so the " +
+			"user doesn't have to run `noz close` by hand. This DESTROYS the worktree/session — a " +
+			"gated action; the user confirms it. Refuses a dirty worktree unless force=true; " +
+			"keep_worktree=true ends only the tmux session; delete_branch=true also drops the local " +
+			"branch. Note: this ends the session this agent runs in.",
+	}, mcpClose)
+
 	return s.Run(ctx, &mcp.StdioTransport{})
 }
 
@@ -278,6 +289,34 @@ func mcpRm(ctx context.Context, req *mcp.CallToolRequest, in mcpRmInput) (*mcp.C
 		out.Message += fmt.Sprintf(", %d failed", failed)
 	}
 	return nil, out, nil
+}
+
+// --- noz_close ---
+
+type mcpCloseInput struct {
+	Force        bool `json:"force,omitempty" jsonschema:"discard a dirty worktree (default false: refuse if dirty)"`
+	KeepWorktree bool `json:"keep_worktree,omitempty" jsonschema:"only end the tmux session, keep the worktree"`
+	DeleteBranch bool `json:"delete_branch,omitempty" jsonschema:"also delete the local branch (safe delete)"`
+}
+
+type mcpCloseOutput struct {
+	Closed  bool   `json:"closed"`
+	Message string `json:"message"`
+}
+
+func mcpClose(ctx context.Context, req *mcp.CallToolRequest, in mcpCloseInput) (*mcp.CallToolResult, mcpCloseOutput, error) {
+	slug := currentTmuxSession()
+	if slug == "" {
+		return nil, mcpCloseOutput{Message: "not in a tmux session — nothing to close"}, nil
+	}
+	// runClose hops the user to safety, then tears down (killing this session
+	// last). On the success path this very process is reaped along with the
+	// session, so the structured result mainly surfaces refuse cases (e.g. a
+	// dirty worktree without force).
+	if err := runClose(in.Force, in.KeepWorktree, in.DeleteBranch); err != nil {
+		return nil, mcpCloseOutput{Message: err.Error()}, nil
+	}
+	return nil, mcpCloseOutput{Closed: true, Message: "closed " + slug}, nil
 }
 
 func mcpBack(ctx context.Context, req *mcp.CallToolRequest, in mcpEmptyInput) (*mcp.CallToolResult, mcpSwitchOutput, error) {
