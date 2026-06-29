@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/zzehring/nozey/policies/schema.json",
+  "$id": "https://github.com/zzehring/noz/policies/schema.json",
   "title": "Noz Policy",
   "description": "Policy file for noz CEL gate. Defines named rules with CEL expressions that evaluate agent tool calls.",
   "type": "object",

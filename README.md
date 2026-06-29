@@ -3,7 +3,7 @@
 <!-- Logo/banner: drop a centered banner image here once one exists, e.g.
      <img src="docs/banner.png" alt="noz" width="600"> -->
 
-# nozey
+# noz
 
 **A fast, stateless CLI for managing AI-agent sessions.**
 
