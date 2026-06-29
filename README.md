@@ -45,21 +45,21 @@ Claude today; the others are launch/detect only.
 ## The dashboard
 
 `noz ls` cross-references your worktrees with tmux and groups sessions by slug
-prefix (`cf-`, `review-`, `i-`, …):
+prefix (`feature-`, `review-`, `i-`, …):
 
 ```
                                      state      win  last
-cf (2/3)
-  ▶ feature-auth             working    3    now     webapp
-  ● feature-checkout           waiting    1    2h      webapp
-  ○ feature-search                                            webapp
+feature (2/3)
+  ▶ feature-auth                     working    3    now     webapp
+  ● feature-checkout                 waiting    1    2h      webapp
+  ○ feature-search                                           webapp
 ```
 
 - `▶` attached · `●` live (detached) · `○` idle (worktree only, no tmux)
 - **state** — `working` / `waiting`, inferred from recent tmux activity (no
   setup needed); a blocked session shows a red `! needs you` once agent hooks
   are wired.
-- Filter by substring or `^prefix`: `noz ls cf`, `noz ls ^review`. Scope with
+- Filter by substring or `^prefix`: `noz ls feature`, `noz ls ^review`. Scope with
   `--active` / `--idle`, `-A` (all repos), `-g` (group size).
 
 ## Profiles

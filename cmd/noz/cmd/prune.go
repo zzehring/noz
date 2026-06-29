@@ -220,7 +220,7 @@ func removeSessionDir(path, name string) error {
 }
 
 func extractSlug(dirName string) string {
-	// "webapp-review-123" → "review-123"
+	// "myrepo-review-123" → "review-123"
 	// "scratch-investigate" → "investigate"
 	if rest, ok := strings.CutPrefix(dirName, "scratch-"); ok {
 		return rest
