@@ -2,6 +2,10 @@
 
 Thanks for your interest in noz.
 
+## Code of conduct
+This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). By
+participating, you're expected to uphold it.
+
 ## Before you start
 For anything beyond a small fix, please open an issue first so we can agree on
 the approach before you write code. noz has strong design principles (see
