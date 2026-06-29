@@ -27,6 +27,7 @@ type sessionInfo struct {
 	agent      string    // detected coding agent (claude, opencode, ...), or ""
 	state      string    // working | waiting | needs-you (live sessions only)
 	created    time.Time // worktree birth time — durable, survives reboot/restore
+	parent     string    // NOZ_PARENT tag — spawning session name ("" for top-level)
 }
 
 // defaultMinCategorySize is the minimum number of sessions for a prefix
@@ -316,6 +317,7 @@ func discoverSessions() ([]sessionInfo, error) {
 			s.lastActive = td.lastActive
 			s.attached = td.attached
 			s.agent = td.agent
+			s.parent = td.parent
 		}
 
 		if fi, err := e.Info(); err == nil {
@@ -453,6 +455,7 @@ type tmuxDetail struct {
 	attached   bool
 	repo       string // NOZ_REPO tag — which repo this session belongs to ("" if untagged)
 	agent      string // detected coding agent (claude, opencode, ...), or ""
+	parent     string // NOZ_PARENT tag — spawning session name ("" for top-level)
 }
 
 func getTmuxDetails() map[string]tmuxDetail {
@@ -460,7 +463,7 @@ func getTmuxDetails() map[string]tmuxDetail {
 
 	// Session-level info (incl. the NOZ_REPO tag, which disambiguates same-slug
 	// sessions across repos).
-	out, err := exec.Command("tmux", "ls", "-F", "#{session_name}\t#{session_windows}\t#{session_activity}\t#{session_attached}\t#{NOZ_REPO}").Output()
+	out, err := exec.Command("tmux", "ls", "-F", "#{session_name}\t#{session_windows}\t#{session_activity}\t#{session_attached}\t#{NOZ_REPO}\t#{NOZ_PARENT}").Output()
 	if err != nil {
 		return details
 	}
@@ -469,7 +472,7 @@ func getTmuxDetails() map[string]tmuxDetail {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\t", 5)
+		parts := strings.SplitN(line, "\t", 6)
 		if len(parts) < 4 {
 			continue
 		}
@@ -479,8 +482,12 @@ func getTmuxDetails() map[string]tmuxDetail {
 		epoch, _ := strconv.ParseInt(parts[2], 10, 64)
 		attachCount, _ := strconv.Atoi(parts[3])
 		repo := ""
-		if len(parts) == 5 {
+		if len(parts) >= 5 {
 			repo = parts[4]
+		}
+		parent := ""
+		if len(parts) >= 6 {
+			parent = parts[5]
 		}
 
 		details[name] = tmuxDetail{
@@ -488,6 +495,7 @@ func getTmuxDetails() map[string]tmuxDetail {
 			lastActive: time.Unix(epoch, 0),
 			attached:   attachCount > 0,
 			repo:       repo,
+			parent:     parent,
 		}
 	}
 

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -99,5 +100,37 @@ func TestWriteJSONFileAtomicAndBackup(t *testing.T) {
 	json.Unmarshal(bak, &bakGot)
 	if bakGot["v"] != "1" {
 		t.Fatalf("backup should hold v=1, got %v", bakGot["v"])
+	}
+}
+
+// TestNozTmuxSnippet covers the picker/jump bindings the snippet emits and the
+// per-key opt-out, so we never silently clobber a user's own macros.
+func TestNozTmuxSnippet(t *testing.T) {
+	full := nozTmuxSnippet(tmuxKeys{repo: "g", all: "G", children: "C-g"})
+	for _, want := range []string{
+		"bind-key g run-shell",
+		"noz pick repo --filter",
+		"bind-key G run-shell",
+		"noz pick all --filter",
+		"bind-key C-g run-shell",
+		"noz pick children --filter",
+		"choose-tree -Zs -f \"#{E:#{@noz_pick}}\"", // native, double-expanded
+	} {
+		if !strings.Contains(full, want) {
+			t.Errorf("snippet missing %q\n%s", want, full)
+		}
+	}
+	// The default prefix+s tree must never be rebound.
+	if strings.Contains(full, "bind-key s ") {
+		t.Errorf("snippet must not touch prefix+s\n%s", full)
+	}
+
+	// Empty keys drop their bindings entirely.
+	trimmed := nozTmuxSnippet(tmuxKeys{repo: "g"})
+	if strings.Contains(trimmed, "pick all") || strings.Contains(trimmed, "pick children") {
+		t.Errorf("empty keys should drop their bindings\n%s", trimmed)
+	}
+	if !strings.Contains(trimmed, "bind-key g run-shell") || !strings.Contains(trimmed, "noz pick repo --filter") {
+		t.Errorf("repo binding should survive\n%s", trimmed)
 	}
 }
