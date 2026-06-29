@@ -92,7 +92,10 @@ func runMCP(ctx context.Context) error {
 			"(else last session, else detach to the shell), then tear down its worktree + tmux " +
 			"session. The in-session counterpart to noz_rm — use when the work here is done so the " +
 			"user doesn't have to run `noz close` by hand. This DESTROYS the worktree/session — a " +
-			"gated action; the user confirms it. Refuses a dirty worktree unless force=true; " +
+			"gated action; the user confirms it. Pass `report` to save a summary of what you " +
+			"did to the brain before closing (the parent reads it without re-entering — ideal " +
+			"when finishing an offshoot). Pass merge=true to fast-forward this branch into the " +
+			"main checkout first (local). Refuses a dirty worktree unless force=true; " +
 			"keep_worktree=true ends only the tmux session; delete_branch=true also drops the local " +
 			"branch. Note: this ends the session this agent runs in.",
 	}, mcpClose)
@@ -294,9 +297,11 @@ func mcpRm(ctx context.Context, req *mcp.CallToolRequest, in mcpRmInput) (*mcp.C
 // --- noz_close ---
 
 type mcpCloseInput struct {
-	Force        bool `json:"force,omitempty" jsonschema:"discard a dirty worktree (default false: refuse if dirty)"`
-	KeepWorktree bool `json:"keep_worktree,omitempty" jsonschema:"only end the tmux session, keep the worktree"`
-	DeleteBranch bool `json:"delete_branch,omitempty" jsonschema:"also delete the local branch (safe delete)"`
+	Report       string `json:"report,omitempty" jsonschema:"a report saved to the brain before closing — what you did (why / proof / risk); the parent reads it without re-entering the session"`
+	Merge        bool   `json:"merge,omitempty" jsonschema:"fast-forward this branch into the main checkout before teardown (local only; implies delete_branch)"`
+	Force        bool   `json:"force,omitempty" jsonschema:"discard a dirty worktree (default false: refuse if dirty)"`
+	KeepWorktree bool   `json:"keep_worktree,omitempty" jsonschema:"only end the tmux session, keep the worktree"`
+	DeleteBranch bool   `json:"delete_branch,omitempty" jsonschema:"also delete the local branch (safe delete)"`
 }
 
 type mcpCloseOutput struct {
@@ -309,11 +314,17 @@ func mcpClose(ctx context.Context, req *mcp.CallToolRequest, in mcpCloseInput) (
 	if slug == "" {
 		return nil, mcpCloseOutput{Message: "not in a tmux session — nothing to close"}, nil
 	}
-	// runClose hops the user to safety, then tears down (killing this session
-	// last). On the success path this very process is reaped along with the
-	// session, so the structured result mainly surfaces refuse cases (e.g. a
-	// dirty worktree without force).
-	if err := runClose(in.Force, in.KeepWorktree, in.DeleteBranch); err != nil {
+	// runClose saves any report, hops the user to safety, then tears down
+	// (killing this session last). On the success path this very process is
+	// reaped along with the session, so the structured result mainly surfaces
+	// refuse cases (e.g. a dirty worktree without force, or a non-ff merge).
+	if err := runClose(closeOptions{
+		force:        in.Force,
+		keepWorktree: in.KeepWorktree,
+		deleteBranch: in.DeleteBranch,
+		merge:        in.Merge,
+		report:       in.Report,
+	}); err != nil {
 		return nil, mcpCloseOutput{Message: err.Error()}, nil
 	}
 	return nil, mcpCloseOutput{Closed: true, Message: "closed " + slug}, nil
