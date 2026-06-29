@@ -24,3 +24,8 @@ planning/
 
 # Noz runtime
 ~/.config/noz/
+
+# Commit the shared CLAUDE.md (it just imports AGENTS.md so Claude Code reads it);
+# keep personal/per-repo notes in CLAUDE.local.md, never committed.
+!CLAUDE.md
+CLAUDE.local.md
