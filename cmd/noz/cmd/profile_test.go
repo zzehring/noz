@@ -1,9 +1,77 @@
 package cmd
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestGrantBrainAccess(t *testing.T) {
+	repo := "myrepo"
+	want := []string{
+		"additionalDirectories",
+		"Read(.noz/**)", "Edit(.noz/**)", "Write(.noz/**)",
+	}
+
+	t.Run("writes RW brain permissions", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("NOZ_ROOT", root)
+		wtDir := filepath.Join(root, repo+"-feature")
+		if err := os.MkdirAll(wtDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		grantBrainAccess(wtDir, repo)
+
+		data, err := os.ReadFile(filepath.Join(wtDir, ".claude", "settings.local.json"))
+		if err != nil {
+			t.Fatalf("settings.local.json not written: %v", err)
+		}
+		s := string(data)
+		for _, w := range want {
+			if !strings.Contains(s, w) {
+				t.Errorf("settings missing %q; got:\n%s", w, s)
+			}
+		}
+	})
+
+	t.Run("respects NOZ_NO_GRANT_CONTEXT", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("NOZ_ROOT", root)
+		t.Setenv("NOZ_NO_GRANT_CONTEXT", "1")
+		wtDir := filepath.Join(root, repo+"-feature")
+		if err := os.MkdirAll(wtDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		grantBrainAccess(wtDir, repo)
+
+		if _, err := os.Stat(filepath.Join(wtDir, ".claude", "settings.local.json")); !os.IsNotExist(err) {
+			t.Errorf("expected no settings file when gated off, err = %v", err)
+		}
+	})
+
+	t.Run("idempotent — no duplicate rules", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("NOZ_ROOT", root)
+		wtDir := filepath.Join(root, repo+"-feature")
+		if err := os.MkdirAll(wtDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		grantBrainAccess(wtDir, repo)
+		grantBrainAccess(wtDir, repo)
+
+		data, err := os.ReadFile(filepath.Join(wtDir, ".claude", "settings.local.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(string(data), "Read(.noz/**)"); n != 1 {
+			t.Errorf("Read(.noz/**) appears %d times, want 1 (not deduped)", n)
+		}
+	})
+}
 
 func TestSplitFrontmatter(t *testing.T) {
 	t.Run("with frontmatter", func(t *testing.T) {
