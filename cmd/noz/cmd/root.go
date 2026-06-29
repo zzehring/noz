@@ -12,10 +12,11 @@ var (
 	jsonOutput bool
 )
 
-func NewRootCmd() *cobra.Command {
+func NewRootCmd(version string) *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:   "noz",
-		Short: "Manage AI-agent sessions (git worktrees + tmux)",
+		Use:     "noz",
+		Version: version,
+		Short:   "Manage AI-agent sessions (git worktrees + tmux)",
 		Long: `noz manages AI-agent sessions as git worktrees + tmux, derived
 live from the filesystem, git, and tmux — no state files to drift.
 
@@ -65,6 +66,6 @@ Run with no arguments to show the session dashboard (same as 'noz ls').`,
 	return rootCmd
 }
 
-func Execute() error {
-	return NewRootCmd().Execute()
+func Execute(version string) error {
+	return NewRootCmd(version).Execute()
 }

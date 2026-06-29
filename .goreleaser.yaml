@@ -1,0 +1,111 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: noz
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: noz
+    main: ./cmd/noz
+    binary: noz
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+      - -X main.builtBy=goreleaser
+
+archives:
+  - id: noz
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - LICENSE
+      - README*
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - "^style:"
+      - "^refactor:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+# Homebrew tap publishing. Commented out for the first release on purpose.
+#
+# This block requires two manual steps BEFORE it can be enabled, and a first
+# release must work on the default GITHUB_TOKEN alone:
+#   1. Create the tap repo by hand (public): github.com/zzehring/homebrew-tap.
+#      GoReleaser writes into it but will not create it.
+#   2. Create a token with write access to that repo (fine-grained PAT scoped to
+#      zzehring/homebrew-tap with Contents: Read and write, or a classic PAT with
+#      the `repo` scope), then add it on zzehring/noz as the Actions secret
+#      HOMEBREW_TAP_GITHUB_TOKEN. The default GITHUB_TOKEN cannot push to another
+#      repo, so without this secret the release would fail.
+# Once both exist, uncomment this block and the HOMEBREW_TAP_GITHUB_TOKEN env in
+# .github/workflows/release.yml, then users can `brew install zzehring/tap/noz`.
+#
+# homebrew_casks:
+#   - name: noz
+#     repository:
+#       owner: zzehring
+#       name: homebrew-tap
+#       branch: main
+#       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+#     directory: Casks
+#     homepage: "https://github.com/zzehring/noz"
+#     description: "A fast, stateless CLI for managing AI-agent sessions"
+#     license: "Apache-2.0"
+#     binary: noz
+#     commit_author:
+#       name: goreleaserbot
+#       email: bot@users.noreply.github.com
+#     # An unsigned binary from a tap is quarantined by Gatekeeper; strip it so
+#     # `noz` runs on first launch.
+#     hooks:
+#       post:
+#         install: |
+#           if OS.mac?
+#             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/noz"]
+#           end
+
+release:
+  github:
+    owner: zzehring
+    name: noz
+  draft: false
+  prerelease: auto
