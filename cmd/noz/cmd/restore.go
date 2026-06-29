@@ -87,9 +87,11 @@ func runRestore(cmd *cobra.Command, filter string) error {
 	}
 
 	restored, live := 0, 0
+	var landed []sessionInfo // now-live sessions (restored or already running) — attach targets
 	for _, s := range sessions {
 		if s.hasTmux {
 			live++
+			landed = append(landed, s)
 			continue
 		}
 		if err := createDetachedSession(tmuxBin, s.slug, s.dir, s.repo); err != nil {
@@ -98,6 +100,7 @@ func runRestore(cmd *cobra.Command, filter string) error {
 		}
 		fmt.Fprintf(w, "  %s●%s %s\n", cGreen, cReset, s.slug)
 		restored++
+		landed = append(landed, s)
 	}
 
 	if restored+live == 0 {
@@ -121,17 +124,41 @@ func runRestore(cmd *cobra.Command, filter string) error {
 		fmt.Fprintf(w, "%snoz: %d other idle worktree(s) not restored — name one to bring it back (e.g. `noz restore <slug>`)%s\n", cGray, skipped, cReset)
 	}
 
-	// Drop you back on the ship. If we're not already in tmux and have a
-	// terminal, attach to the most-recently-used session; otherwise just point
-	// the way. (NOZ_NO_ATTACH / non-tty keep it non-interactive for scripts.)
-	if os.Getenv("NOZ_NO_ATTACH") != "" || !stdoutIsTerminal() || os.Getenv("TMUX") != "" {
-		fmt.Fprintf(w, "%snoz: jump in with 'noz sw'; resume an agent with 'claude --continue'%s\n", cGray, cReset)
+	// Land you on the session you asked for — the one you named, or the
+	// most-recently-active of what we brought back. NEVER a bare `tmux attach`,
+	// which grabs tmux's arbitrary last session (not what you restored).
+	target := pickLandingTarget(landed)
+	if target == "" {
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "noz: attaching — prefix+j or 'noz sw' to move, 'claude --continue' to resume an agent\n")
-	att := exec.Command(tmuxBin, "attach")
+	if os.Getenv("NOZ_NO_ATTACH") != "" || !stdoutIsTerminal() {
+		fmt.Fprintf(w, "%snoz: jump in with 'noz sw %s'; resume an agent with 'claude --continue'%s\n", cGray, target, cReset)
+		return nil
+	}
+	if os.Getenv("TMUX") != "" {
+		// Already in tmux — switch the client to the target rather than nesting.
+		return exec.Command(tmuxBin, "switch-client", "-t", target).Run()
+	}
+	fmt.Fprintf(os.Stderr, "noz: attaching to %s — prefix+j or 'noz sw' to move, 'claude --continue' to resume an agent\n", target)
+	att := exec.Command(tmuxBin, "attach", "-t", target)
 	att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return att.Run()
+}
+
+// pickLandingTarget chooses which restored/live session to land the user on:
+// the single match when there's exactly one, else the most-recently-active.
+func pickLandingTarget(landed []sessionInfo) string {
+	if len(landed) == 0 {
+		return ""
+	}
+	best := landed[0]
+	bestAct := sessionActivity(best.dir)
+	for _, s := range landed[1:] {
+		if a := sessionActivity(s.dir); a.After(bestAct) {
+			best, bestAct = s, a
+		}
+	}
+	return best.slug
 }
 
 // createDetachedSession creates a tagged tmux session without attaching.
