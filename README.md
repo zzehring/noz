@@ -165,16 +165,20 @@ Tools:
 The payoff of the act-tools is a human-gated fan-out loop:
 
 ```
-noz_spawn (gated) → agent works on its own isolated branch → reports back
-                  → you review and merge
+noz_spawn (gated) → agent works on its own isolated branch
+                  → noz close --report (context streams back to the brain)
+                  → you read the report and bring the work back
 ```
 
-`noz spawn` (or `noz_spawn`) creates a task-scoped **offshoot** — its own
-worktree, tmux session, and a seeded context file — tagged with the session it
+`noz spawn` (or `noz_spawn`) creates a task-scoped **offshoot**: its own
+worktree, tmux session, and a seeded context file, tagged with the session it
 was spawned from (`NOZ_PARENT`), so `noz close` returns you there when the work
-is done. The agent works *contained* on its branch (it can't touch `main` or
-its siblings), and you bring the work back deliberately. The gated **merge**
-bookend that closes this loop is in progress.
+is done. The agent works *contained* on its branch (it can't touch `main` or its
+siblings). When it finishes, `noz close --report "..."` (or the `report` field on
+`noz_close`) saves a back-report to `.noz/<repo>/reports/<slug>.md`, so you read
+what it did without re-entering the session. `noz close --merge` fast-forwards
+the branch into your main checkout on the way out (local; PR merges stay manual
+and gated by your forge).
 
 ## Observability (opt-in)
 
@@ -225,7 +229,7 @@ noz setup claude --remove --project-only            # undo
 | `noz status` | Current session context (`--json` for a prompt segment) |
 | `noz path <slug>` | Print a session's worktree dir (`cd "$(noz path x)"`) |
 | `noz mv <old> <new>` | Rename a session across worktree + tmux + branch |
-| `noz close` | End the session you're in; hop to parent/last, then tear down |
+| `noz close` | End the session you're in; hop to parent/last, then tear down (`--report`, `--merge`) |
 | `noz rm <slug>...` | Remove one or more sessions (`-y`/`--force`, `--keep-worktree`, `--delete-branch`) |
 | `noz reap [filter]` | Kill idle agents to reclaim memory |
 | `noz prune [filter]` | Remove stale worktrees with no live session |
@@ -242,7 +246,7 @@ noz setup claude --remove --project-only            # undo
 - [x] Lifecycle: `reap` (memory), `prune`, `restore` (reboot recovery)
 - [x] MCP surface — agent can see / navigate / spawn / tear down sessions (create + destroy gated)
 - [x] Agentic offshoots — `spawn` task-scoped sessions, `NOZ_PARENT` lineage, `close` to return
-- [ ] Gated `merge` bookend — a fast review surface + PR/local merge to close the loop _(in progress)_
-- [ ] Observability — live "what's the agent doing right now" view (`noz top`), built on the gate
+- [x] Report-back on close — offshoots stream context to the brain (`close --report`); local `close --merge`
+- [ ] Observability — surface `report ✓` + live "what's the agent doing right now" in `noz ls` / `noz top` (built on the gate)
 - [ ] Isolation providers (v2) — run agents in microVMs ([`grafana/umm`](https://github.com/grafana/umm))
       for hard memory caps + isolation; `noz` stays the orchestrator
