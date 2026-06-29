@@ -319,7 +319,7 @@ func discoverSessions() ([]sessionInfo, error) {
 		}
 
 		if fi, err := e.Info(); err == nil {
-			s.created = fileBirthtime(fi)
+			s.created = fileBirthtime(dir, fi)
 		}
 		s.state = claudeState(s)
 		s.category = categorizeSlug(slug)

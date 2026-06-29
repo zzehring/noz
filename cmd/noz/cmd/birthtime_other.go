@@ -1,4 +1,4 @@
-//go:build !darwin
+//go:build !darwin && !linux
 
 package cmd
 
@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// fileBirthtime degrades to the zero time off Darwin: birth time isn't portably
-// available without statx (Linux), so the "created" column simply hides there.
-// TODO: Linux support via golang.org/x/sys/unix Statx (STATX_BTIME).
-func fileBirthtime(_ os.FileInfo) time.Time { return time.Time{} }
+// fileBirthtime degrades to the zero time on platforms without a birth-time
+// path (everything but Darwin and Linux): the "created" column simply hides
+// there rather than guessing.
+func fileBirthtime(_ string, _ os.FileInfo) time.Time { return time.Time{} }
