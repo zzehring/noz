@@ -1,15 +1,67 @@
+<div align="center">
+
+<!-- Logo/banner: drop a centered banner image here once one exists, e.g.
+     <img src="docs/banner.png" alt="noz" width="600"> -->
+
 # nozey
 
 **A fast, stateless CLI for managing AI-agent sessions.**
 
-`noz` turns each task into a git worktree + tmux session and gives you a live
-dashboard across all of them. It keeps **no state of its own** — everything is
-derived live from the filesystem, git, and tmux — so it can't drift, and it
-survives reboots (the worktrees do; `noz restore` brings recently-active
+<a href="https://github.com/zzehring/noz/releases"><img src="https://img.shields.io/github/v/release/zzehring/noz?color=blue" alt="Latest release"></a>
+<a href="https://github.com/zzehring/noz/actions/workflows/ci.yml"><img src="https://github.com/zzehring/noz/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="https://goreportcard.com/report/github.com/zzehring/noz"><img src="https://goreportcard.com/badge/github.com/zzehring/noz" alt="Go Report Card"></a>
+<a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/zzehring/noz" alt="Go version"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
+
+</div>
+
+**What it is.** `noz` turns each task into a git worktree + tmux session and
+gives you one live dashboard across all of them — which are working, which are
+waiting, which agent is running where. It keeps **no state of its own**:
+everything is derived live from the filesystem, git, and tmux, so it can't
+drift, deletes clean, and survives reboots (`noz restore` brings recently-active
 sessions back).
 
-One command per task spins up an isolated worktree + tmux session; one
-dashboard shows which are live, which agent is running, and which are idle.
+**Why you'd want it.** Running many agents at once means juggling contexts. noz
+puts you in a place to succeed agentically — each task isolated in its own
+worktree so work can't collide, the blast radius contained, and **you always in
+the loop**: the agent can see and navigate your sessions, but every create and
+destroy is human-gated. It composes tmux and git rather than replacing them, so
+it's a static binary that's trivial to adopt or drop — an extension of the
+terminal you already live in, not another app to learn.
+
+### 30-second quickstart
+
+```bash
+go install github.com/zzehring/noz/cmd/noz@latest   # needs git + tmux
+
+noz open feature-auth                  # task → isolated git worktree + tmux session
+noz ls                                 # live dashboard across all your sessions
+noz spawn fix-flaky --task "..."       # fan out a contained agent offshoot
+noz close                              # finish up and hop back to where you came from
+```
+
+## Demo
+
+<!-- DEMO PLACEHOLDER — record the asset and drop it in here. The single
+     highest-value asset is `noz ls` plus a spawn-and-return loop.
+
+     asciinema:  <a href="https://asciinema.org/a/REPLACE"><img src="https://asciinema.org/a/REPLACE.svg" alt="noz demo" width="600"></a>
+     or GIF:     <img src="docs/demo.gif" alt="noz demo" width="600">
+
+     Record with asciinema (→ agg for the GIF):
+       asciinema rec noz-demo.cast --cols 100 --rows 30
+       # run the script below inside the recording, then:
+       agg noz-demo.cast docs/demo.gif
+
+     Exact commands to run on camera (the spawn-and-return loop is the money shot):
+       noz open feature-auth                                # task → isolated worktree + tmux session
+       noz ls                                               # the dashboard: working / waiting / idle
+       noz spawn fix-flaky --task "tidy up flaky retries"   # contained offshoot on its own branch
+       noz ls                                               # parent + offshoot, side by side
+       noz close --report "fixed the retry helper"          # stream context back, hop to parent
+       noz ls                                               # back where we started, report saved
+-->
 
 ## Install
 
@@ -17,8 +69,25 @@ dashboard shows which are live, which agent is running, and which are idle.
 go install github.com/zzehring/noz/cmd/noz@latest
 ```
 
-**Requires:** `git` and `tmux` (plus `fzf` for `noz sw`). Sessions live under
-`$NOZ_ROOT` (default `~/worktrees/`).
+**Requires:** `git` (2.22+) and `tmux` (3.2+), plus `fzf` for `noz sw`. Sessions
+live under `$NOZ_ROOT` (default `~/worktrees/`).
+
+### Homebrew
+
+<!-- PLACEHOLDER — not wired up yet. A Homebrew tap is planned; once the release
+     pipeline publishes the cask this section becomes the recommended install. -->
+
+Coming soon:
+
+```bash
+brew install zzehring/tap/noz   # not available yet — tap is planned
+```
+
+### Prebuilt binaries
+
+Download for your platform from the
+[releases page](https://github.com/zzehring/noz/releases), then move `noz` onto
+your `$PATH`.
 
 ## Quick start
 

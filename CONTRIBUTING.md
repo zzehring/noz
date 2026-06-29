@@ -17,6 +17,16 @@ go vet ./...            # vet
 gofmt -l .              # must print nothing; CI fails on unformatted files
 ```
 
+## Commit messages
+noz uses [Conventional Commits](https://www.conventionalcommits.org). The type
+drives the auto-generated changelog (see [CHANGELOG.md](CHANGELOG.md)):
+
+- `feat:` — a new feature (listed under **Features**)
+- `fix:` — a bug fix (listed under **Bug Fixes**)
+- `docs:`, `chore:`, `ci:`, `test:`, `style:`, `refactor:` — excluded from the changelog
+- a scope is encouraged: `feat(open): …`, `fix(restore): …`
+- breaking changes: add `!` (`feat!:`) or a `BREAKING CHANGE:` footer
+
 ## Pull requests
 1. Branch off `main`.
 2. Add or update tests for behavior changes.
