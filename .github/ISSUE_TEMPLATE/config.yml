@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions & discussion
+    about: For usage questions, please use Discussions.
+    url: https://github.com/zzehring/noz/discussions
