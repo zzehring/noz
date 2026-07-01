@@ -12,25 +12,41 @@ import (
 	"github.com/zzehring/noz/internal/agent"
 )
 
+// tmuxKeys are the prefix keys bound by the `noz setup tmux` snippet. They're
+// just defaults — every one is overridable via a flag so the snippet never
+// assumes a key is free in the user's own config.
+type tmuxKeys struct {
+	repo     string // native picker, current repo
+	all      string // native picker, all repos
+	children string // native picker, offshoots of this session
+}
+
 func newSetupCmd() *cobra.Command {
 	var remove bool
 	var projectOnly bool
 	var dryRun bool
+	var keys tmuxKeys
 
 	cmd := &cobra.Command{
 		Use:   "setup [target]",
 		Short: "Configure editor/agent integrations",
 		Long: `Set up an integration target:
 
-  tmux     prints a status-bar + jump-key snippet to add to ~/.tmux.conf
+  tmux     prints a status-bar + picker/jump-key snippet to add to ~/.tmux.conf
   mcp      prints how to register noz as an MCP server (agent session-awareness)
   claude   installs PreToolUse gate hooks into ~/.claude/settings.json
 
 Other agents (opencode, codex, gemini, pi) are known to noz for launch and
 detection, but gate hooks aren't implemented for them yet.
 
+The tmux snippet is print-only — noz never edits ~/.tmux.conf. The picker keys
+are defaults; pass --*-key to pick others if they clash with your macros (set a
+key to "" to drop that binding):
+
 Examples:
-  noz setup tmux                               # print tmux snippet
+  noz setup tmux                               # print tmux snippet (g/G/C-g)
+  noz setup tmux --repo-key C-s --all-key C-a  # rebind the picker keys
+  noz setup tmux --children-key ""             # drop the children binding
   noz setup claude --policy readonly           # global gate hooks
   noz setup claude --policy dev --project-only # this repo only
   noz setup claude --remove                    # undo`,
@@ -40,7 +56,7 @@ Examples:
 			if len(args) > 0 {
 				agentName = args[0]
 			}
-			return runSetup(agentName, remove, projectOnly, dryRun)
+			return runSetup(agentName, remove, projectOnly, dryRun, keys)
 		},
 	}
 
@@ -48,14 +64,17 @@ Examples:
 	cmd.Flags().BoolVar(&projectOnly, "project-only", false, "Only configure for current project (.claude/settings.json)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without writing")
 	cmd.Flags().StringVar(&policyName, "policy", "", "CEL policy name or path")
+	cmd.Flags().StringVar(&keys.repo, "repo-key", "g", "tmux: prefix key for the repo-local picker (\"\" to omit)")
+	cmd.Flags().StringVar(&keys.all, "all-key", "G", "tmux: prefix key for the all-sessions picker (\"\" to omit)")
+	cmd.Flags().StringVar(&keys.children, "children-key", "C-g", "tmux: prefix key for the children picker (\"\" to omit)")
 	cmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
 
 	return cmd
 }
 
-func runSetup(agentName string, remove, projectOnly, dryRun bool) error {
+func runSetup(agentName string, remove, projectOnly, dryRun bool, keys tmuxKeys) error {
 	if agentName == "tmux" {
-		return setupTmux(remove)
+		return setupTmux(remove, keys)
 	}
 	if agentName == "mcp" {
 		return setupMCP()
@@ -387,11 +406,50 @@ func isNozHookWithMatcher(entry any, matcher string) bool {
 // their own ~/.tmux.conf. It uses `status-right -ga` (append) and a guarded
 // keybind so it never clobbers an existing status bar or binding — noz does
 // not edit the user's tmux config for them.
-const nozTmuxSnippet = `# --- noz: session context in status bar ---
-# Appends to status-right (-ga) so it won't replace your existing status bar.
-set -ga status-right '#[fg=cyan]#{?NOZ_SLUG,#{NOZ_SLUG} ,}#[fg=yellow]#{?NOZ_REPO,#{NOZ_REPO} ,}#[default]'`
+// nozTmuxSnippet builds the ~/.tmux.conf block printed by `noz setup tmux`.
+// Every binding is gated on its key being non-empty so a user can drop any of
+// them with --<name>-key "". The default prefix+s (all-sessions tree) is never
+// touched. noz resolves the matching session names from the NOZ_* tags; the
+// binding stays a thin one-liner that just renders a native tmux display-menu.
+func nozTmuxSnippet(keys tmuxKeys) string {
+	var b strings.Builder
+	b.WriteString("# --- noz: session context + picker keys ---\n")
+	b.WriteString("# Print-only: noz never edits this file. These keys are defaults —\n")
+	b.WriteString("# rebind freely (noz setup tmux --repo-key ... ) if they clash with your macros.\n")
+	b.WriteString("# Appends to status-right (-ga) so it won't replace your existing status bar.\n")
+	b.WriteString("set -ga status-right '#[fg=cyan]#{?NOZ_SLUG,#{NOZ_SLUG} ,}#[fg=yellow]#{?NOZ_REPO,#{NOZ_REPO} ,}#[default]'\n")
 
-func setupTmux(remove bool) error {
+	if keys.repo != "" || keys.all != "" || keys.children != "" {
+		b.WriteString("\n# Native session picker: tmux's own choose-tree (full-screen + preview),\n")
+		b.WriteString("# filtered to a view. noz resolves the matching session NAMES (filtering on\n")
+		b.WriteString("# the NOZ_* tags in Go, where it's reliable); choose-tree then filters on\n")
+		b.WriteString("# session_name via #{E:} double-expansion. The default prefix+s is untouched.\n")
+		if keys.repo != "" {
+			fmt.Fprintf(&b, "#   prefix+%-3s sessions in THIS repo\n", keys.repo)
+		}
+		if keys.all != "" {
+			fmt.Fprintf(&b, "#   prefix+%-3s every noz session (all repos)\n", keys.all)
+		}
+		if keys.children != "" {
+			fmt.Fprintf(&b, "#   prefix+%-3s offshoots spawned from THIS session\n", keys.children)
+		}
+	}
+	for _, bind := range []struct{ key, view string }{
+		{keys.repo, "repo"},
+		{keys.all, "all"},
+		{keys.children, "children"},
+	} {
+		if bind.key == "" {
+			continue
+		}
+		// run-shell (synchronous) stashes the resolved filter, then choose-tree
+		// runs natively in the client and double-expands it via #{E:}.
+		fmt.Fprintf(&b, "bind-key %s run-shell \"tmux set-option -g @noz_pick \\\"\\$(noz pick %s --filter)\\\"\" \\; choose-tree -Zs -f \"#{E:#{@noz_pick}}\"\n", bind.key, bind.view)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func setupTmux(remove bool, keys tmuxKeys) error {
 	if remove {
 		fmt.Fprintln(os.Stderr, "noz: `noz setup tmux` doesn't edit your config — nothing to remove.")
 		fmt.Fprintln(os.Stderr, "noz: if you added the snippet to ~/.tmux.conf, delete those lines by hand.")
@@ -401,7 +459,7 @@ func setupTmux(remove bool) error {
 	fmt.Fprintln(os.Stderr, "noz: add the following to your ~/.tmux.conf, then reload it")
 	fmt.Fprintln(os.Stderr, "noz: (prefix + : then `source-file ~/.tmux.conf`):")
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stdout, nozTmuxSnippet)
+	fmt.Fprintln(os.Stdout, nozTmuxSnippet(keys))
 	return nil
 }
 

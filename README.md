@@ -173,10 +173,53 @@ real `phys_footprint`, measured only on the candidates.
 ```bash
 noz setup tmux           # prints a snippet to paste into ~/.tmux.conf:
                          #   - NOZ_SLUG / NOZ_REPO + current command in the status bar
+                         #   - prefix + g   native picker: sessions in THIS repo
+                         #   - prefix + G   native picker: every noz session
+                         #   - prefix + C-g native picker: offshoots of THIS session
 ```
 
 `noz` never edits your tmux config for you — it prints an append-safe snippet so
 it can't clobber your status bar or keybindings.
+
+### Native session picker
+
+The `g` / `G` / `C-g` bindings open tmux's **own** `choose-tree` — full-screen,
+preview pane, type-to-search — just pre-filtered to a **view** over your live
+sessions. No fzf, no external deps.
+
+| Key | View | Shows |
+|-----|------|-------|
+| `prefix + g`   | repo     | sessions sharing the current session's repo |
+| `prefix + G`   | all      | every live noz session, across all repos |
+| `prefix + C-g` | children | offshoots spawned from the current session |
+
+The default `prefix + s` (tmux's unfiltered tree) is left untouched. The keys
+are just defaults — rebind any of them, or drop one entirely, without editing
+the snippet by hand:
+
+```bash
+noz setup tmux --repo-key C-s --all-key C-a   # use your own keys
+noz setup tmux --children-key ""              # omit the children binding
+```
+
+**How it works (and why noz, not raw `choose-tree -f`):** the binding asks `noz
+pick <view> --filter` for the matching sessions, then `choose-tree` filters on
+those. The filtering happens in noz on purpose. tmux's format filter falls back
+to the *server's global environment* for any session whose own env lacks a
+`NOZ_*` tag — so filtering `choose-tree` directly on `#{NOZ_REPO}` leaks
+non-noz sessions in and drops untagged ones. noz reads each session's env
+correctly in Go (same source as `noz ls`) and emits a filter that matches the
+resolved names by `session_name`, a per-row primitive that's immune to that
+fallback.
+
+`noz pick` also has `--json` and a plain tab-separated form for scripting or
+your own picker:
+
+```bash
+noz pick repo --json     # [{ "session": "...", "repo": "...", "state": "..." }, ...]
+noz pick children        # "<session>\t<label>" lines, one per matching session
+noz pick all --filter    # the tmux choose-tree filter the binding uses
+```
 
 ## Shell setup
 
@@ -292,6 +335,7 @@ noz setup claude --remove --project-only            # undo
 | `noz open <slug>` | Start/attach a session (worktree + tmux); `--pr`, `--profile`, `--agent`, `--detach` |
 | `noz spawn <slug>` | Create a task-scoped offshoot (worktree + seeded context); `--task`, `--source`, `--launch` |
 | `noz ls [filter]` | Session dashboard (`-A` all repos, `--active`/`--idle`) |
+| `noz pick [repo\|children\|all]` | Resolve sessions for a view; backs the `choose-tree` picker (`--json`, `--filter`) |
 | `noz status` | Current session context (`--json` for a prompt segment) |
 | `noz path <slug>` | Print a session's worktree dir (`cd "$(noz path x)"`) |
 | `noz mv <old> <new>` | Rename a session across worktree + tmux + branch |
@@ -307,7 +351,7 @@ noz setup claude --remove --project-only            # undo
 
 ## Roadmap
 
-- [x] Stateless session dashboard, fuzzy switch, status
+- [x] Stateless session dashboard, native session picker, status
 - [x] Profiles with tmux windows; agent registry + detection
 - [x] Lifecycle: `reap` (memory), `prune`, `restore` (reboot recovery)
 - [x] MCP surface — agent can see / navigate / spawn / tear down sessions (create + destroy gated)
