@@ -69,7 +69,7 @@ noz close                              # finish up and hop back to where you cam
 go install github.com/zzehring/noz/cmd/noz@latest
 ```
 
-**Requires:** `git` (2.22+) and `tmux` (3.2+), plus `fzf` for `noz sw`. Sessions
+**Requires:** `git` (2.22+) and `tmux` (3.2+). Sessions
 live under `$NOZ_ROOT` (default `~/worktrees/`).
 
 ### Homebrew
@@ -98,7 +98,6 @@ noz open bug-123 --agent claude  # ...and open claude in the first window
 
 noz ls                           # dashboard for the current repo
 noz ls -A                        # ...across all repos
-noz sw                           # fzf-pick a live session and jump to it
 noz status                       # where am I? (slug, repo, branch, agent, state)
 
 noz spawn fix-flaky --task "..." # create a task-scoped offshoot (seeds context)
@@ -174,7 +173,6 @@ real `phys_footprint`, measured only on the candidates.
 ```bash
 noz setup tmux           # prints a snippet to paste into ~/.tmux.conf:
                          #   - NOZ_SLUG / NOZ_REPO + current command in the status bar
-                         #   - prefix + j to fuzzy-jump sessions (noz sw)
 ```
 
 `noz` never edits your tmux config for you — it prints an append-safe snippet so
@@ -294,7 +292,6 @@ noz setup claude --remove --project-only            # undo
 | `noz open <slug>` | Start/attach a session (worktree + tmux); `--pr`, `--profile`, `--agent`, `--detach` |
 | `noz spawn <slug>` | Create a task-scoped offshoot (worktree + seeded context); `--task`, `--source`, `--launch` |
 | `noz ls [filter]` | Session dashboard (`-A` all repos, `--active`/`--idle`) |
-| `noz sw [filter]` | Fuzzy-pick a live session and switch to it |
 | `noz status` | Current session context (`--json` for a prompt segment) |
 | `noz path <slug>` | Print a session's worktree dir (`cd "$(noz path x)"`) |
 | `noz mv <old> <new>` | Rename a session across worktree + tmux + branch |

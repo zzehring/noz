@@ -387,10 +387,9 @@ func isNozHookWithMatcher(entry any, matcher string) bool {
 // their own ~/.tmux.conf. It uses `status-right -ga` (append) and a guarded
 // keybind so it never clobbers an existing status bar or binding — noz does
 // not edit the user's tmux config for them.
-const nozTmuxSnippet = `# --- noz: session context + prefix+j to fuzzy-jump sessions ---
+const nozTmuxSnippet = `# --- noz: session context in status bar ---
 # Appends to status-right (-ga) so it won't replace your existing status bar.
-set -ga status-right '#[fg=cyan]#{?NOZ_SLUG,#{NOZ_SLUG} ,}#[fg=yellow]#{?NOZ_REPO,#{NOZ_REPO} ,}#[default]'
-bind-key j display-popup -E -w 60% -h 50% "noz sw"`
+set -ga status-right '#[fg=cyan]#{?NOZ_SLUG,#{NOZ_SLUG} ,}#[fg=yellow]#{?NOZ_REPO,#{NOZ_REPO} ,}#[default]'`
 
 func setupTmux(remove bool) error {
 	if remove {

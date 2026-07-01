@@ -26,7 +26,7 @@ matching idle worktree is restored — naming something is intent.
 
 Sessions are created detached and tagged; it does NOT launch coding agents
 (that would spin up many at once). Resume an agent yourself with
-'claude --continue' in its worktree, or jump in with 'noz sw'.
+'claude --continue' in its worktree, or jump in with 'noz open <slug>'.
 
   noz restore          # bring back recently-active worktrees
   noz restore cf       # only cf-* sessions
@@ -132,14 +132,14 @@ func runRestore(cmd *cobra.Command, filter string) error {
 		return nil
 	}
 	if os.Getenv("NOZ_NO_ATTACH") != "" || !stdoutIsTerminal() {
-		fmt.Fprintf(w, "%snoz: jump in with 'noz sw %s'; resume an agent with 'claude --continue'%s\n", cGray, target, cReset)
+		fmt.Fprintf(w, "%snoz: jump in with 'noz open %s'; resume an agent with 'claude --continue'%s\n", cGray, target, cReset)
 		return nil
 	}
 	if os.Getenv("TMUX") != "" {
 		// Already in tmux — switch the client to the target rather than nesting.
 		return exec.Command(tmuxBin, "switch-client", "-t", target).Run()
 	}
-	fmt.Fprintf(os.Stderr, "noz: attaching to %s — prefix+j or 'noz sw' to move, 'claude --continue' to resume an agent\n", target)
+	fmt.Fprintf(os.Stderr, "noz: attaching to %s — 'noz open <slug>' to switch, 'noz back' to return, 'claude --continue' to resume an agent\n", target)
 	att := exec.Command(tmuxBin, "attach", "-t", target)
 	att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return att.Run()
