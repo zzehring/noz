@@ -114,6 +114,11 @@ feature (2/3)
 - **state** — `working` / `waiting`, inferred from recent tmux activity (no
   setup needed); a blocked session shows a red `! needs you` once agent hooks
   are wired.
+- Sessions cluster by the slug prefix before the first hyphen, so naming your
+  work `feature-auth` and `feature-search` lands it under one `feature` header.
+  The `(2/3)` count is how many are live out of the group total. A one-off
+  prefix folds into `other`; `-g` sets how many sessions a prefix needs to get
+  its own group.
 - Filter by substring or `^prefix`: `noz ls feature`, `noz ls ^review`. Scope with
   `--active`/`-a`, `--idle`/`-i`, `-A` (all repos), `-g` (group size).
 
