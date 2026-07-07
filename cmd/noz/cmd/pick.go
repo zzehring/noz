@@ -21,14 +21,13 @@ const (
 func newPickCmd() *cobra.Command {
 	var (
 		view     string
-		asJSON   bool
 		asFilter bool
 		current  string
 		repo     string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "pick [repo|children|all]",
+		Use:   "pick <repo|children|all>",
 		Short: "List switchable sessions for a view (repo/children/all)",
 		Long: `Resolves which live noz sessions match a view, reading the NOZ_REPO /
 NOZ_SLUG / NOZ_PARENT session tags.
@@ -52,24 +51,22 @@ Output forms:
             for: choose-tree -f. Empty match set emits "0" (matches nothing).
 
 Only live sessions are listed (idle worktrees aren't switchable).`,
-		Args: cobra.MaximumNArgs(1),
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) > 0 {
-				view = args[0]
-			}
+			view = args[0]
 			switch view {
 			case viewRepo, viewChildren, viewAll:
 			default:
 				return fmt.Errorf("unknown view %q (want: repo, children, all)", view)
 			}
-			if asJSON && asFilter {
+			if jsonOutput && asFilter {
 				return fmt.Errorf("--json and --filter are mutually exclusive")
 			}
-			return runPick(cmd, view, asJSON, asFilter, current, repo)
+			return runPick(cmd, view, jsonOutput, asFilter, current, repo)
 		},
 	}
 
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit a JSON array of sessions")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit a JSON array of sessions")
 	cmd.Flags().BoolVar(&asFilter, "filter", false, "emit a tmux format-filter over session_name (for choose-tree -f)")
 	cmd.Flags().StringVar(&current, "current", "", "current session name (default: detected from tmux)")
 	cmd.Flags().StringVar(&repo, "repo", "", "current session's repo (default: detected from current session's tag)")

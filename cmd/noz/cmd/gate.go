@@ -39,6 +39,7 @@ Designed to be called from agent pre-execution hooks:
   Claude Code: PreToolUse hook (Bash, Read, Write, Edit)
   Codex CLI:   PreToolUse hook
   Gemini CLI:  BeforeTool hook`,
+		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runGate(inputFormat, tool, guardLog)
@@ -49,6 +50,7 @@ Designed to be called from agent pre-execution hooks:
 	cmd.Flags().StringVar(&tool, "tool", "bash", "Tool type being gated: bash, read, write, edit, glob, grep")
 	cmd.Flags().StringVar(&guardLog, "guard-log", "", "Path to append guard tower audit log")
 	cmd.Flags().StringVar(&policyName, "policy", "", "CEL policy name or path")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit JSON verdict (for Gemini/Codex hook format)")
 	cmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
 
 	return cmd
@@ -176,9 +178,9 @@ func evalAndReport(g *gate.Gate, req *gate.CommandRequest, display, guardLog str
 	case gate.Pause:
 		fmt.Fprintf(os.Stderr, "noz: PAUSE %s (rule: %s)\n", display, result.Rule)
 		if jsonOutput {
-			writeGeminiResponse("deny", "requires approval: "+result.Rule)
+			writeGeminiResponse("pause", "requires approval: "+result.Rule)
 		}
-		os.Exit(2)
+		os.Exit(3)
 		return true
 	}
 	return false

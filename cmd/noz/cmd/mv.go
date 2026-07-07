@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -120,7 +121,7 @@ func runMv(oldSlug, newSlug string) error {
 		newDir := filepath.Join(root, repo+"-"+newSlug)
 		out, err := exec.Command("git", "-C", newDir, "branch", "--show-current").Output()
 		if err == nil {
-			currentBranch := trimOutput(out)
+			currentBranch := strings.TrimSpace(string(out))
 			if currentBranch == oldSlug {
 				if err := exec.Command("git", "-C", newDir, "branch", "-m", oldSlug, newSlug).Run(); err != nil {
 					fmt.Fprintf(os.Stderr, "noz: warning: could not rename branch: %v\n", err)
@@ -138,10 +139,3 @@ func runMv(oldSlug, newSlug string) error {
 	return nil
 }
 
-func trimOutput(b []byte) string {
-	s := string(b)
-	for len(s) > 0 && (s[len(s)-1] == '\n' || s[len(s)-1] == '\r') {
-		s = s[:len(s)-1]
-	}
-	return s
-}

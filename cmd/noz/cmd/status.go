@@ -25,7 +25,7 @@ type statusInfo struct {
 }
 
 func newStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show the current session's context (where am I)",
 		Long: `Prints context for the session you're in: slug, repo, branch, Claude
@@ -38,6 +38,8 @@ Use --json for a machine-readable form (e.g. a shell-prompt segment).`,
 			return runStatus(cmd, jsonOutput)
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit JSON (for shell-prompt segments and scripting)")
+	return cmd
 }
 
 // gatherStatus derives the current session's context from cwd, git, and tmux.

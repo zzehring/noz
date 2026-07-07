@@ -74,8 +74,8 @@ Examples:
 	}
 
 	cmd.Flags().BoolVarP(&all, "all", "A", false, "show sessions across all repos")
-	cmd.Flags().BoolVar(&activeOnly, "active", false, "only show sessions with a live tmux session")
-	cmd.Flags().BoolVar(&staleOnly, "idle", false, "only show worktrees without a tmux session")
+	cmd.Flags().BoolVarP(&activeOnly, "active", "a", false, "only show sessions with a live tmux session")
+	cmd.Flags().BoolVarP(&staleOnly, "idle", "i", false, "only show worktrees without a tmux session")
 	cmd.Flags().IntVarP(&groupMin, "group-min", "g", defaultMinCategorySize, "min sessions for a prefix to get its own group")
 
 	return cmd

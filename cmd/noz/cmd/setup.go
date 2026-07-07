@@ -190,7 +190,7 @@ func installNozHooks(settings map[string]any, nozBin, policyPath string) map[str
 	preToolUse := getOrCreatePreToolUse(hooks)
 
 	for _, th := range toolHooks {
-		hookCmd := fmt.Sprintf("echo \"$CLAUDE_TOOL_INPUT\" | %s gate --tool %s --policy %s", nozBin, th.tool, policyPath)
+		hookCmd := fmt.Sprintf("echo \"$CLAUDE_TOOL_INPUT\" | %s gate --tool %s --policy %s", shellQuote(nozBin), th.tool, shellQuote(policyPath))
 		hook := map[string]any{
 			"matcher": th.matcher,
 			"hooks": []any{

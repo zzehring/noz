@@ -13,7 +13,7 @@ import (
 )
 
 func newPruneCmd() *cobra.Command {
-	var dryRun bool
+	var force bool
 	var maxAge string
 	var all bool
 
@@ -23,42 +23,32 @@ func newPruneCmd() *cobra.Command {
 		Long: `Finds worktree directories with no active tmux session and older than
 the age threshold, then removes them.
 
-Dry-run by default — shows what would be removed without deleting.
+Preview-only by default — shows what would be removed without deleting.
 Use --force to actually remove.
 
 Examples:
-  noz prune                    # dry-run: show stale sessions (7d default)
+  noz prune                    # preview: show stale sessions (7d default)
   noz prune --force            # actually remove them
   noz prune --age 3d --force   # remove sessions older than 3 days
   noz prune --all --force      # remove ALL sessions without active tmux`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			force := !dryRun
 			return runPrune(cmd, force, maxAge, all)
 		},
 	}
 
-	cmd.Flags().BoolVar(&dryRun, "dry-run", true, "preview only (default true, use --dry-run=false or --force)")
+	cmd.Flags().BoolVar(&force, "force", false, "actually remove (default is preview only)")
 	cmd.Flags().BoolVar(&all, "all", false, "remove all sessions without active tmux (ignore age)")
 	cmd.Flags().StringVar(&maxAge, "age", "7d", "remove sessions older than this (e.g., 1d, 3d, 7d, 2w)")
-
-	// --force is sugar for --dry-run=false
-	var force bool
-	cmd.Flags().BoolVar(&force, "force", false, "actually remove (same as --dry-run=false)")
-	cmd.PreRun = func(cmd *cobra.Command, args []string) {
-		if cmd.Flags().Changed("force") && force {
-			dryRun = false
-		}
-	}
 
 	return cmd
 }
 
 type staleSession struct {
-	name    string
-	path    string
-	age     time.Duration
-	hasTmux bool
-	size    string
+	name string
+	path string
+	age  time.Duration
+	size string
 }
 
 func runPrune(cmd *cobra.Command, force bool, maxAge string, all bool) error {
@@ -112,7 +102,7 @@ func runPrune(cmd *cobra.Command, force bool, maxAge string, all bool) error {
 
 		size := dirSize(path)
 		stale = append(stale, staleSession{
-			name: name, path: path, age: age, hasTmux: hasTmux, size: size,
+			name: name, path: path, age: age, size: size,
 		})
 	}
 

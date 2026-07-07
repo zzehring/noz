@@ -38,7 +38,6 @@ Run with no arguments to show the session dashboard (same as 'noz ls').`,
 	}
 
 	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "config file (default ~/.config/noz/config.yaml)")
-	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "JSON output for scripting")
 
 	// Session management — the core of noz.
 	rootCmd.AddCommand(newOpenCmd())

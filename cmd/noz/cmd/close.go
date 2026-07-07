@@ -24,7 +24,6 @@ type closeOptions struct {
 
 func newCloseCmd() *cobra.Command {
 	var opts closeOptions
-	var yes bool
 	var reportFile string
 
 	cmd := &cobra.Command{
@@ -50,13 +49,11 @@ you're sitting in. close gets you out safely first.
 				}
 				opts.report = string(data)
 			}
-			opts.force = opts.force || yes
 			return runClose(opts)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&opts.force, "force", "f", false, "discard a dirty worktree without confirming")
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "assume yes to prompts (non-interactive)")
 	cmd.Flags().BoolVar(&opts.keepWorktree, "keep-worktree", false, "only end the tmux session, keep the worktree")
 	cmd.Flags().BoolVar(&opts.deleteBranch, "delete-branch", false, "also delete the local branch")
 	cmd.Flags().BoolVar(&opts.merge, "merge", false, "fast-forward this branch into the main checkout first (local; implies --delete-branch)")

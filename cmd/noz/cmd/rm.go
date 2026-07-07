@@ -13,7 +13,6 @@ import (
 
 func newRmCmd() *cobra.Command {
 	var force bool
-	var yes bool
 	var keepWorktree bool
 	var deleteBranch bool
 
@@ -23,14 +22,11 @@ func newRmCmd() *cobra.Command {
 		Args:              cobra.MinimumNArgs(1),
 		ValidArgsFunction: completeTmuxSessions,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// -y/--yes is a synonym for --force here: the only prompt is the
-			// dirty-worktree discard, so assuming yes means proceeding with it.
-			return runRmMulti(args, force || yes, keepWorktree, deleteBranch)
+			return runRmMulti(args, force, keepWorktree, deleteBranch)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "discard a dirty worktree without confirming")
-	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "assume yes to prompts (non-interactive; e.g. discarding a dirty worktree)")
 	cmd.Flags().BoolVar(&keepWorktree, "keep-worktree", false, "only kill tmux session, keep worktree")
 	cmd.Flags().BoolVar(&deleteBranch, "delete-branch", false, "also delete the local branch")
 
