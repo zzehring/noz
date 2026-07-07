@@ -90,12 +90,21 @@ func runGate(inputFormat, tool, guardLog string) error {
 
 // gateBash handles Bash tool calls — parses shell string, evaluates each segment.
 func gateBash(g *gate.Gate, inputFormat, guardLog string) error {
-	cmdStr, err := extractCommand(inputFormat, "bash")
+	cmdStr, found, err := extractCommand(inputFormat, "bash")
 	if err != nil {
 		return err
 	}
-	if cmdStr == "" {
+	if !found {
+		// Fail closed: the gate was asked to vet a bash call but no command
+		// string was present (empty input, or a command sent in a shape we
+		// don't recognize). Deny rather than let it through unseen.
+		logGuard(guardLog, "DENY", "", "no-command", "missing or malformed command input")
+		fmt.Fprintln(os.Stderr, "noz: no command in tool input — denied")
+		os.Exit(2)
 		return nil
+	}
+	if cmdStr == "" {
+		return nil // command field present but empty — a shell no-op
 	}
 
 	commands, err := shellparse.Parse(cmdStr)
@@ -137,6 +146,10 @@ func gateFile(g *gate.Gate, tool, inputFormat, guardLog string) error {
 		return err
 	}
 	if toolInput == nil {
+		// Fail closed: gate invoked for a file tool with no input at all.
+		logGuard(guardLog, "DENY", tool, "no-input", "empty tool input")
+		fmt.Fprintf(os.Stderr, "noz: no input for %s tool — denied\n", tool)
+		os.Exit(2)
 		return nil
 	}
 
@@ -216,21 +229,24 @@ func readToolInput(format string) (map[string]any, error) {
 }
 
 // extractCommand gets the shell command string from agent-specific input.
-func extractCommand(format, tool string) (string, error) {
+// The bool reports whether a command string was actually present: a false
+// means no input, or a command sent in an unrecognized shape (e.g. an array),
+// which the caller treats as a hard deny rather than an empty allow.
+func extractCommand(format, tool string) (string, bool, error) {
 	toolInput, err := readToolInput(format)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 	if toolInput == nil {
-		return "", nil
+		return "", false, nil
 	}
 
 	// Bash tool sends {"command": "..."}
 	if cmd, ok := toolInput["command"].(string); ok {
-		return cmd, nil
+		return cmd, true, nil
 	}
 
-	return "", nil
+	return "", false, nil
 }
 
 // extractPath gets the file path from a tool input JSON.

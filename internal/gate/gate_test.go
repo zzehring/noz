@@ -211,6 +211,45 @@ func TestDefaultDenyWhenNoRules(t *testing.T) {
 	}
 }
 
+func TestEvalErrorFailsClosed(t *testing.T) {
+	// A DENY rule that indexes past the end of args on short input errors at
+	// eval time. It must fail closed (DENY), not be skipped so a later broad
+	// ALLOW rule matches the very request the DENY rule was meant to catch.
+	policy := `
+// deny-kubectl-delete
+request.cmd == "kubectl" && request.args[1] == "delete" ? "DENY" : ""
+---
+// allow-kubectl
+request.cmd == "kubectl" ? "ALLOW" : ""
+`
+	g, err := NewFromSource(policy)
+	if err != nil {
+		t.Fatalf("failed to create gate: %v", err)
+	}
+
+	// One arg → request.args[1] is out of range → rule 1 errors.
+	result := g.Evaluate(&CommandRequest{Cmd: "kubectl", Args: []string{"version"}})
+	if result.Verdict != Deny {
+		t.Errorf("got %s, want DENY on rule eval error (fail closed)", result.Verdict)
+	}
+}
+
+func TestContentAvailableToPolicy(t *testing.T) {
+	// request.content must be populated so content-based rules evaluate
+	// instead of erroring (and then, per fail-closed, denying everything).
+	policy := `request.content.contains("SECRET") ? "DENY" : "ALLOW"`
+	g, err := NewFromSource(policy)
+	if err != nil {
+		t.Fatalf("failed to create gate: %v", err)
+	}
+	if v := g.Evaluate(&CommandRequest{Tool: "write", Path: "x", Content: "has SECRET here"}).Verdict; v != Deny {
+		t.Errorf("got %s, want DENY when content matches", v)
+	}
+	if v := g.Evaluate(&CommandRequest{Tool: "write", Path: "x", Content: "clean"}).Verdict; v != Allow {
+		t.Errorf("got %s, want ALLOW when content is clean", v)
+	}
+}
+
 func TestRuleNaming(t *testing.T) {
 	policy := `
 // my-custom-rule

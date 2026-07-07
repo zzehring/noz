@@ -93,6 +93,7 @@ func (g *Gate) Evaluate(req *CommandRequest) GateResult {
 			"cmd":     req.Cmd,
 			"args":    req.Args,
 			"path":    req.Path,
+			"content": req.Content,
 			"env":     req.Env,
 			"workdir": req.WorkDir,
 			"agent":   req.Agent,
@@ -104,8 +105,15 @@ func (g *Gate) Evaluate(req *CommandRequest) GateResult {
 	for _, rule := range g.rules {
 		out, _, err := rule.Program.Eval(activation)
 		if err != nil {
-			// Rule evaluation error = skip this rule
-			continue
+			// Fail closed: a rule that errors at eval time (e.g. an index
+			// past the end of request.args on crafted input) must not be
+			// silently skipped — that would let a later ALLOW rule match a
+			// request an earlier DENY rule was written to catch. Deny.
+			return GateResult{
+				Verdict: Deny,
+				Rule:    rule.Name,
+				Reason:  fmt.Sprintf("rule evaluation error: %v", err),
+			}
 		}
 
 		verdict := evalToVerdict(out)
