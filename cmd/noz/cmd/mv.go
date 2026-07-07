@@ -87,23 +87,45 @@ func runMv(oldSlug, newSlug string) error {
 		}
 	}
 
-	// Rename worktree directory
+	// Resolve the target dir and fail fast if it already exists — before
+	// mutating anything, so we never half-rename onto an occupied name.
+	newDir := ""
 	if oldDir != "" {
 		newDirName := newSlug
 		if repo != "" {
 			newDirName = repo + "-" + newSlug
 		}
-		newDir := filepath.Join(root, newDirName)
-
+		newDir = filepath.Join(root, newDirName)
 		if dirExists(newDir) {
 			return fmt.Errorf("target directory already exists: %s", newDir)
 		}
+	}
 
-		// git worktree move (handles git internals)
+	// Rename the tmux session first: it's the only reversible step, so if the
+	// heavier worktree move fails afterward we can roll it back and leave the
+	// session exactly as we found it, rather than orphaning a moved dir under a
+	// stale session name.
+	tmuxRenamed := false
+	if tmuxHasSession(oldSlug) {
+		if err := exec.Command("tmux", "rename-session", "-t", oldSlug, newSlug).Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "noz: warning: could not rename tmux session: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "noz: renamed tmux session %s -> %s\n", oldSlug, newSlug)
+			tmuxRenamed = true
+			renamed = true
+		}
+	}
+
+	// Move the worktree directory (the point of no return).
+	if oldDir != "" {
+		// git worktree move (handles git internals); fall back to a plain
+		// rename for scratch dirs.
 		err := exec.Command("git", "worktree", "move", oldDir, newDir).Run()
 		if err != nil {
-			// Fallback to plain rename for scratch dirs
 			if err := os.Rename(oldDir, newDir); err != nil {
+				if tmuxRenamed {
+					exec.Command("tmux", "rename-session", "-t", newSlug, oldSlug).Run() // roll back
+				}
 				return fmt.Errorf("renaming directory: %w", err)
 			}
 		}
@@ -112,24 +134,13 @@ func runMv(oldSlug, newSlug string) error {
 
 		if repo != "" {
 			if err := os.Rename(briefPath(repo, oldSlug), briefPath(repo, newSlug)); err != nil && !os.IsNotExist(err) {
-				fmt.Fprintf(os.Stderr, "noz: warning: could not rename context file: %v\n", err)
+				fmt.Fprintf(os.Stderr, "noz: warning: could not rename brief file: %v\n", err)
 			}
 		}
 	}
 
-	// Rename tmux session
-	if tmuxHasSession(oldSlug) {
-		if err := exec.Command("tmux", "rename-session", "-t", oldSlug, newSlug).Run(); err != nil {
-			fmt.Fprintf(os.Stderr, "noz: warning: could not rename tmux session: %v\n", err)
-		} else {
-			fmt.Fprintf(os.Stderr, "noz: renamed tmux session %s -> %s\n", oldSlug, newSlug)
-			renamed = true
-		}
-	}
-
 	// Rename git branch (only if branch name matches old slug)
-	if repo != "" {
-		newDir := filepath.Join(root, repo+"-"+newSlug)
+	if repo != "" && newDir != "" {
 		out, err := exec.Command("git", "-C", newDir, "branch", "--show-current").Output()
 		if err == nil {
 			currentBranch := strings.TrimSpace(string(out))
