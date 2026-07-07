@@ -131,6 +131,19 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 	return wtDir, nil
 }
 
+// writeSessionContext seeds a session's task note into the .noz brain.
+// Simpler than writeOffshootContext — no parent/return boilerplate.
+func writeSessionContext(repo, slug, task string) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Session: %s\n\n", slug)
+	fmt.Fprintf(&b, "## Task\n\n%s\n", strings.TrimSpace(task))
+	ctxPath := contextFilePath(repo, slug)
+	if err := os.MkdirAll(filepath.Dir(ctxPath), 0755); err != nil {
+		return fmt.Errorf("writing session context: %w", err)
+	}
+	return os.WriteFile(ctxPath, []byte(b.String()), 0644)
+}
+
 // writeOffshootContext seeds an offshoot's marching orders into the .noz brain:
 // its task plus, when it has a parent, how to return when done.
 func writeOffshootContext(repo, slug, task, parent string) error {

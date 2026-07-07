@@ -28,6 +28,7 @@ type sessionInfo struct {
 	state      string    // working | waiting | needs-you (live sessions only)
 	created    time.Time // worktree birth time — durable, survives reboot/restore
 	parent     string    // NOZ_PARENT tag — spawning session name ("" for top-level)
+	task       string    // first line of ## Task from context file, or ""
 }
 
 // defaultMinCategorySize is the minimum number of sessions for a prefix
@@ -63,7 +64,8 @@ Examples:
   noz ls ^review      # only review-* (not dd-review-*)
   noz ls -a           # only live tmux sessions
   noz ls -i           # only idle worktrees (cleanup candidates)`,
-		Args: cobra.MaximumNArgs(1),
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeSlugs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filter := ""
 			if len(args) > 0 {
@@ -239,6 +241,16 @@ func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {
 		repoStr = fmt.Sprintf("  %s%s%s", cGray, s.repo, cReset)
 	}
 
+	taskStr := ""
+	if s.task != "" {
+		t := s.task
+		runes := []rune(t)
+		if len(runes) > 40 {
+			t = string(runes[:39]) + "…"
+		}
+		taskStr = fmt.Sprintf("  %s%s%s", cDim, t, cReset)
+	}
+
 	if s.hasTmux {
 		marker := cGreen + "●" + cReset
 		if s.attached {
@@ -257,20 +269,20 @@ func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {
 			idleStr = relativeTime(s.lastActive)
 		}
 
-		fmt.Fprintf(w, "  %s %-*s  %s%-9s%s  %s%-3s%s  %s%-6s%s  %s%-7s%s%s\n",
+		fmt.Fprintf(w, "  %s %-*s  %s%-9s%s  %s%-3s%s  %s%-6s%s  %s%-7s%s%s%s\n",
 			marker, slugWidth, name,
 			stateColor, stateLabel, cReset,
 			cCyan, winStr, cReset,
 			cYellow, idleStr, cReset,
 			cGray, createdStr(s), cReset,
-			repoStr)
+			repoStr, taskStr)
 	} else {
 		marker := cGray + "○" + cReset
-		fmt.Fprintf(w, "  %s %s%-*s%s  %-9s  %-3s  %-6s  %s%-7s%s%s\n",
+		fmt.Fprintf(w, "  %s %s%-*s%s  %-9s  %-3s  %-6s  %s%-7s%s%s%s\n",
 			marker, cDim, slugWidth, name, cReset,
 			"", "", "",
 			cGray, createdStr(s), cReset,
-			repoStr)
+			repoStr, taskStr)
 	}
 }
 
@@ -323,6 +335,7 @@ func discoverSessions() ([]sessionInfo, error) {
 		if fi, err := e.Info(); err == nil {
 			s.created = fileBirthtime(dir, fi)
 		}
+		s.task = readSessionTask(s.repo, s.slug)
 		s.state = claudeState(s)
 		s.category = categorizeSlug(slug)
 		sessions = append(sessions, s)

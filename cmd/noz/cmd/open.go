@@ -22,6 +22,7 @@ func newOpenCmd() *cobra.Command {
 	var agentName string
 	var force bool
 	var detach bool
+	var task string
 
 	cmd := &cobra.Command{
 		Use:   "open <slug>",
@@ -75,7 +76,7 @@ Examples:
 			if noRepo || !inGitRepo() {
 				return runOpenScratch(slug, agentName)
 			}
-			return runOpenWorktree(slug, base, profile, agentName, force)
+			return runOpenWorktree(slug, base, profile, agentName, task, force)
 		},
 	}
 
@@ -89,6 +90,7 @@ Examples:
 	cmd.RegisterFlagCompletionFunc("agent", completeAgents)
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "proceed even if the slug is a live session in another repo")
 	cmd.Flags().BoolVarP(&detach, "detach", "d", false, "create the session but don't attach/switch to it")
+	cmd.Flags().StringVar(&task, "task", "", "seed task notes into the session context (new sessions only)")
 
 	return cmd
 }
@@ -145,7 +147,7 @@ func completeAgents(cmd *cobra.Command, args []string, toComplete string) ([]str
 	return matches, cobra.ShellCompDirectiveNoFileComp
 }
 
-func runOpenWorktree(slug, baseBranch, profile, agentName string, force bool) error {
+func runOpenWorktree(slug, baseBranch, profile, agentName, task string, force bool) error {
 	repo, err := repoName()
 	if err != nil {
 		return err
@@ -201,6 +203,15 @@ func runOpenWorktree(slug, baseBranch, profile, agentName string, force bool) er
 		}
 		windows = w
 		if wrote {
+			ctxRef = contextRef(slug)
+		}
+	}
+
+	// Seed task context on new session (when no profile already wrote context).
+	if created && task != "" && ctxRef == "" {
+		if err := writeSessionContext(repo, slug, task); err != nil {
+			fmt.Fprintf(os.Stderr, "noz: warning: could not write task context: %v\n", err)
+		} else {
 			ctxRef = contextRef(slug)
 		}
 	}
@@ -301,14 +312,15 @@ func runOpenScratch(slug, agentName string) error {
 	root := nozRoot()
 	dir := filepath.Join(root, "scratch-"+slug)
 
+	existed := dirExists(dir)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("creating scratch dir: %w", err)
 	}
 
-	if !dirExists(filepath.Join(dir, ".git")) {
-		fmt.Fprintf(os.Stderr, "noz: created scratch workspace at %s\n", dir)
-	} else {
+	if existed {
 		fmt.Fprintf(os.Stderr, "noz: reusing scratch workspace at %s\n", dir)
+	} else {
+		fmt.Fprintf(os.Stderr, "noz: created scratch workspace at %s\n", dir)
 	}
 
 	primary, err := agentPrimary(agentName, "")
@@ -473,11 +485,16 @@ func linkNozDir(root, repo, wtDir string) {
 	nozDir := filepath.Join(root, ".noz", repo)
 	link := filepath.Join(wtDir, ".noz")
 
-	// Create persistent dir if it doesn't exist
+	// Create persistent dir and standard subdirs if they don't exist.
+	// brain/ is user-owned; context/ and reports/ are noz-managed.
 	if err := os.MkdirAll(nozDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "noz: warning: could not create .noz dir: %v\n", err)
 		return
 	}
+	for _, sub := range []string{"brain", "context", "reports"} {
+		os.MkdirAll(filepath.Join(nozDir, sub), 0755) //nolint:errcheck
+	}
+	writeBrainReadme(nozDir)
 
 	// Symlink .noz -> persistent dir (skip if already exists)
 	if _, err := os.Lstat(link); err == nil {
@@ -496,6 +513,64 @@ func linkNozDir(root, repo, wtDir string) {
 	}
 
 	fmt.Fprintf(os.Stderr, "noz: linked .noz -> %s\n", nozDir)
+}
+
+// readSessionTask returns the first non-empty line of the ## Task section from
+// a session's context file, or "" if the file is absent or has no task.
+func readSessionTask(repo, slug string) string {
+	data, err := os.ReadFile(contextFilePath(repo, slug))
+	if err != nil {
+		return ""
+	}
+	return extractTaskLine(string(data))
+}
+
+// extractTaskLine returns the first non-empty line after a ## Task heading.
+func extractTaskLine(content string) string {
+	inTask := false
+	for _, line := range strings.Split(content, "\n") {
+		if strings.HasPrefix(line, "## Task") {
+			inTask = true
+			continue
+		}
+		if inTask {
+			if strings.HasPrefix(line, "#") {
+				break
+			}
+			if t := strings.TrimSpace(line); t != "" {
+				return t
+			}
+		}
+	}
+	return ""
+}
+
+// brainReadme documents the brain layout so the ownership split is discoverable
+// from inside the dir itself, not just the docs. noz writes only context/ and
+// reports/; everything else — including brain/ — is yours.
+const brainReadme = `# .noz brain
+
+Shared per-repo workspace, symlinked into each worktree as ` + "`.noz/`" + `.
+
+- ` + "`brain/`" + `   — yours. Notes, scratch, whatever you want to carry across
+             sessions. noz never writes here.
+- ` + "`context/`" + ` — noz-authored task notes, one per session (` + "`<slug>.md`" + `),
+             written when you seed a task (` + "`--task`" + ` / ` + "`noz spawn`" + `).
+- ` + "`reports/`" + ` — back-reports from ` + "`noz close --report`" + `, one per session.
+
+noz recreates these directories on ` + "`noz open`" + `, but not their contents:
+a deleted report is gone for good; a deleted context note won't reappear
+unless you re-seed the task. The dirs are safe to delete; the files are history.
+`
+
+// writeBrainReadme drops a layout marker in the brain root. Best-effort and
+// write-once — never clobbers an edited README.
+func writeBrainReadme(nozDir string) {
+	path := filepath.Join(nozDir, "README.md")
+	if _, err := os.Stat(path); err == nil {
+		return // already present — leave any user edits alone
+	}
+	os.WriteFile(path, []byte(brainReadme), 0644) //nolint:errcheck
 }
 
 // resolveMainGitDir finds the main repo's .git directory from a worktree.
@@ -565,7 +640,7 @@ func isNozSession(slug string) bool {
 
 // tmuxSessionEnv returns the value of a session-level tmux environment variable,
 // or "" if the session or variable doesn't exist (or is set but empty). Stateless
-// lineage/metadata (NOZ_PARENT, NOZ_AUTO_RETURN) rides on these.
+// lineage/metadata (NOZ_PARENT) rides on these.
 func tmuxSessionEnv(slug, key string) string {
 	out, err := exec.Command("tmux", "show-environment", "-t", slug, key).Output()
 	if err != nil {
