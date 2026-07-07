@@ -216,7 +216,6 @@ func removeSessionDir(path, name string) error {
 	return nil
 }
 
-
 func parseAge(s string) (time.Duration, error) {
 	s = strings.TrimSpace(strings.ToLower(s))
 	if rest, ok := strings.CutSuffix(s, "w"); ok {
