@@ -51,7 +51,8 @@ Output forms:
             for: choose-tree -f. Empty match set emits "0" (matches nothing).
 
 Only live sessions are listed (idle worktrees aren't switchable).`,
-		Args: cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: cobra.FixedCompletions([]string{"repo", "children", "all"}, cobra.ShellCompDirectiveNoFileComp),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			view = args[0]
 			switch view {

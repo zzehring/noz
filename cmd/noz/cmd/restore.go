@@ -31,7 +31,8 @@ Sessions are created detached and tagged; it does NOT launch coding agents
   noz restore          # bring back recently-active worktrees
   noz restore cf       # only cf-* sessions
   noz restore ^review  # only review-* sessions`,
-		Args: cobra.MaximumNArgs(1),
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeSlugs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filter := ""
 			if len(args) > 0 {

@@ -22,7 +22,14 @@ Point your agent at it, e.g. Claude Code .mcp.json:
 
   { "mcpServers": { "noz": { "command": "noz", "args": ["mcp"] } } }
 
-This is Layer 1: read-only awareness. Navigation/spawn tools come later.`,
+Tools exposed:
+  noz_sessions  list all discovered sessions
+  noz_status    current session context
+  noz_switch    switch the tmux client to a named session
+  noz_back      hop to the previous tmux session
+  noz_spawn     create a task-scoped offshoot (gated: human approval required)
+  noz_rm        remove a session (gated: human approval required)
+  noz_close     close the current session (gated: human approval required)`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMCP(cmd.Context())

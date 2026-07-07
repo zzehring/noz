@@ -131,7 +131,7 @@ func runClose(opts closeOptions) error {
 		exec.Command(tmuxBin, "switch-client", "-t", target).Run()
 		msg := fmt.Sprintf("noz: closed %s → %s", slug, target)
 		if reportSaved {
-			msg += fmt.Sprintf(" (report: .noz/reports/%s.md)", slug)
+			msg += fmt.Sprintf(" (report: .noz/%s/reports/%s.md)", repo, slug)
 		}
 		exec.Command(tmuxBin, "display-message", msg).Run()
 	} else {

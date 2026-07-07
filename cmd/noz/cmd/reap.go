@@ -29,7 +29,8 @@ default; pass --force to actually kill.
   noz reap --force         # kill them
   noz reap --idle 2h       # only agents idle >= 2h
   noz reap cf --force      # only cf-* sessions`,
-		Args: cobra.MaximumNArgs(1),
+		Args:              cobra.MaximumNArgs(1),
+		ValidArgsFunction: completeSlugs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			filter := ""
 			if len(args) > 0 {

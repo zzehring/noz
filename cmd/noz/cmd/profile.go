@@ -465,7 +465,7 @@ func grantBrainAccess(wtDir, repo string) {
 		return
 	}
 	brain := filepath.Join(nozRoot(), ".noz", repo)
-	abs := "//" + strings.TrimPrefix(brain, "/") + "/**"
+	abs := brain + "/**"
 
 	dir := filepath.Join(wtDir, ".claude")
 	path := filepath.Join(dir, "settings.local.json")

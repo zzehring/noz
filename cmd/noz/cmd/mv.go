@@ -24,8 +24,13 @@ Stateless — just renames the underlying resources.
 Examples:
   noz mv investigate-thing feature-investigate   # recategorize
   noz mv typo-name correct-name                   # fix a name`,
-		Args:              cobra.ExactArgs(2),
-		ValidArgsFunction: completeTmuxSessions,
+		Args: cobra.ExactArgs(2),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) == 0 {
+				return completeTmuxSessions(cmd, args, toComplete)
+			}
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runMv(args[0], args[1])
 		},
@@ -144,4 +149,3 @@ func runMv(oldSlug, newSlug string) error {
 
 	return nil
 }
-
