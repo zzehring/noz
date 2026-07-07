@@ -1,3 +1,5 @@
+// Package config loads noz configuration and resolves policy file paths under
+// the user's config dir.
 package config
 
 import (

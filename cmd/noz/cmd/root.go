@@ -1,3 +1,4 @@
+// Package cmd implements noz's CLI commands, roughly one Cobra handler per file.
 package cmd
 
 import (

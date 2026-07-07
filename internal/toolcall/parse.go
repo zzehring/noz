@@ -1,3 +1,4 @@
+// Package toolcall parses the JSON tool-call input agents send to the gate.
 package toolcall
 
 import (

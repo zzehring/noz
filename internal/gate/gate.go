@@ -1,3 +1,5 @@
+// Package gate evaluates an agent's proposed tool calls against a CEL policy:
+// first match wins, default deny.
 package gate
 
 import (

@@ -1,3 +1,5 @@
+// Command noz is a stateless CLI for managing AI-agent sessions as git
+// worktrees and tmux sessions.
 package main
 
 import (
