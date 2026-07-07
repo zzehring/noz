@@ -100,7 +100,13 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 	if err := writeOffshootBrief(repo, spec.Slug, spec.Task, parent); err != nil {
 		return "", err
 	}
-	grantBrainAccess(wtDir, repo) // read+write the .noz brain without prompting
+	// Only grant now if we're launching Claude into the offshoot immediately;
+	// otherwise the later `noz open <slug>` grants for whatever agent opens it.
+	grantAgent := ""
+	if launch {
+		grantAgent = agentName
+	}
+	grantBrainAccess(wtDir, repo, grantAgent) // Claude-only: read+write the brain without prompting
 
 	tmuxBin, err := exec.LookPath("tmux")
 	if err != nil {

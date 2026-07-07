@@ -22,7 +22,7 @@ func TestGrantBrainAccess(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		grantBrainAccess(wtDir, repo)
+		grantBrainAccess(wtDir, repo, "claude")
 
 		data, err := os.ReadFile(filepath.Join(wtDir, ".claude", "settings.local.json"))
 		if err != nil {
@@ -45,10 +45,50 @@ func TestGrantBrainAccess(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		grantBrainAccess(wtDir, repo)
+		grantBrainAccess(wtDir, repo, "claude")
 
 		if _, err := os.Stat(filepath.Join(wtDir, ".claude", "settings.local.json")); !os.IsNotExist(err) {
 			t.Errorf("expected no settings file when gated off, err = %v", err)
+		}
+	})
+
+	t.Run("skips non-Claude agents", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("NOZ_ROOT", root)
+		wtDir := filepath.Join(root, repo+"-feature")
+		if err := os.MkdirAll(wtDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		grantBrainAccess(wtDir, repo, "gemini")
+
+		if _, err := os.Stat(filepath.Join(wtDir, ".claude", "settings.local.json")); !os.IsNotExist(err) {
+			t.Errorf("expected no .claude config for a non-Claude agent, err = %v", err)
+		}
+	})
+
+	t.Run("does not clobber an unparseable settings file", func(t *testing.T) {
+		root := t.TempDir()
+		t.Setenv("NOZ_ROOT", root)
+		wtDir := filepath.Join(root, repo+"-feature")
+		claudeDir := filepath.Join(wtDir, ".claude")
+		if err := os.MkdirAll(claudeDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(claudeDir, "settings.local.json")
+		original := "// user's JSONC config\n{ \"foo\": true }\n"
+		if err := os.WriteFile(path, []byte(original), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		grantBrainAccess(wtDir, repo, "claude")
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) != original {
+			t.Errorf("clobbered an unparseable settings file:\ngot:  %q\nwant: %q", string(data), original)
 		}
 	})
 
@@ -60,8 +100,8 @@ func TestGrantBrainAccess(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		grantBrainAccess(wtDir, repo)
-		grantBrainAccess(wtDir, repo)
+		grantBrainAccess(wtDir, repo, "claude")
+		grantBrainAccess(wtDir, repo, "claude")
 
 		data, err := os.ReadFile(filepath.Join(wtDir, ".claude", "settings.local.json"))
 		if err != nil {

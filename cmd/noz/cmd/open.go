@@ -190,7 +190,7 @@ func runOpenWorktree(slug, baseBranch, profile, agentName, task string, force bo
 	}
 
 	linkNozDir(root, repo, wtDir)
-	grantBrainAccess(wtDir, repo) // read+write the .noz brain without prompting, on every open
+	grantBrainAccess(wtDir, repo, agentName) // Claude-only: read+write the brain without prompting
 
 	// Apply profile only on first creation
 	var windows []profileWindow
@@ -304,7 +304,7 @@ func runOpenPR(prNumber string, depth int, profile, agentName string, force bool
 	}
 
 	linkNozDir(root, repo, wtDir)
-	grantBrainAccess(wtDir, repo) // read+write the .noz brain without prompting, on every open
+	grantBrainAccess(wtDir, repo, agentName) // Claude-only: read+write the brain without prompting
 	return tmuxSession(slug, wtDir, primary, windows)
 }
 

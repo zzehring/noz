@@ -450,18 +450,26 @@ func briefRef(slug string) string {
 	return ".noz/brief/" + slug + ".md"
 }
 
-// grantContextRead lets an agent in this worktree read its .noz context without
-// a per-read permission prompt. The .noz symlink points outside the workspace,
-// which Claude Code gates by default — so the agent's very first act (reading
-// its own seeded marching orders) would otherwise prompt.
+// grantBrainAccess lets a Claude agent in this worktree read its .noz brief and
+// read/write the shared brain without a per-access permission prompt. The .noz
+// symlink points outside the workspace, which Claude Code gates by default — so
+// the agent's very first act (reading its own seeded marching orders) would
+// otherwise prompt.
 //
-// It writes a scoped, gitignored .claude/settings.local.json: reads of the brain
-// allowed (both the symlink path and its resolved target, which Claude checks
-// together), edits of the brain denied. A new file in a noz-created worktree,
-// scoped read-only to noz's own brain — not trampling user config, and trivially
-// reversible. Best-effort and idempotent; opt out with NOZ_NO_GRANT_CONTEXT.
-func grantBrainAccess(wtDir, repo string) {
+// It writes a scoped, gitignored .claude/settings.local.json granting read+write
+// to the brain (the brain is bidirectional — agents read briefs and write
+// notes). This file is Claude-specific, so it is only written when the agent noz
+// is launching is Claude; for any other agent (or none) noz leaves the worktree
+// untouched, keeping the tool agent-agnostic. Best-effort and idempotent; opt
+// out with NOZ_NO_GRANT_CONTEXT.
+func grantBrainAccess(wtDir, repo, agentName string) {
 	if os.Getenv("NOZ_NO_GRANT_CONTEXT") != "" {
+		return
+	}
+	// The grant is Claude-specific config. Don't write it for other agents or
+	// when no agent is launched — that would contradict agent-agnosticism and
+	// silently edit config for a tool the user isn't using.
+	if agentName != "claude" {
 		return
 	}
 	brain := filepath.Join(nozRoot(), ".noz", repo)
@@ -472,7 +480,12 @@ func grantBrainAccess(wtDir, repo string) {
 
 	m := map[string]any{}
 	if data, err := os.ReadFile(path); err == nil {
-		json.Unmarshal(data, &m) // best-effort merge into any existing file
+		// Don't clobber a settings file we can't parse (comments, BOM, hand
+		// edits) — overwriting would silently discard the user's own config.
+		if err := json.Unmarshal(data, &m); err != nil {
+			fmt.Fprintf(os.Stderr, "noz: warning: %s isn't valid JSON — leaving it untouched (agent may prompt to read its brief)\n", path)
+			return
+		}
 	}
 	mergeStringList(m, "additionalDirectories", brain)
 	perms := childMap(m, "permissions")
