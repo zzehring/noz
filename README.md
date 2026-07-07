@@ -5,7 +5,7 @@
 
 # noz
 
-**A fast, stateless CLI for managing AI-agent sessions.**
+**Context-first session management for multi-agent work.**
 
 <a href="https://github.com/zzehring/noz/releases"><img src="https://img.shields.io/github/v/release/zzehring/noz?color=blue" alt="Latest release"></a>
 <a href="https://github.com/zzehring/noz/actions/workflows/ci.yml"><img src="https://github.com/zzehring/noz/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -15,53 +15,37 @@
 
 </div>
 
-**What it is.** `noz` turns each task into a git worktree + tmux session and
-gives you one live dashboard across all of them — which are working, which are
-waiting, which agent is running where. It keeps **no state of its own**:
-everything is derived live from the filesystem, git, and tmux, so it can't
-drift, deletes clean, and survives reboots (`noz restore` brings recently-active
-sessions back).
+**What it is.** When you're working across multiple tasks with AI agents, context
+is the bottleneck — knowing what each agent is working on, what you left off,
+and how to get back to it cleanly. `noz` gives each task its own git worktree
+and tmux session, keeps the working context (task notes, back-reports, history)
+alongside the workspace, and gives you one dashboard across everything. Switching
+tasks means picking a session, not reconstructing state from memory.
 
-**Why you'd want it.** Running many agents at once means juggling contexts. noz
-puts you in a place to succeed agentically — each task isolated in its own
-worktree so work can't collide, the blast radius contained, and **you always in
-the loop**: the agent can see and navigate your sessions, but every create and
-destroy is human-gated. It composes tmux and git rather than replacing them, so
-it's a static binary that's trivial to adopt or drop — an extension of the
-terminal you already live in, not another app to learn.
+It keeps **no state of its own**: everything is derived live from the filesystem,
+git, and tmux. Sessions can't drift, deletions are clean, and after a reboot
+`noz restore` brings everything back — no manifest to maintain.
+
+**Why it's useful.** Running several agents in parallel, each needs an isolated
+workspace so work doesn't collide, and you need to know what's happening without
+jumping into every session. noz isolates each task in its own worktree, surfaces
+what's working and what's waiting on one screen, and keeps **you in control**:
+the agent can see and navigate sessions, but creating and destroying is always
+your call. It's a static binary that composes with tmux and git rather than
+replacing them — adopt it for one repo, drop it cleanly if it doesn't fit.
 
 ### 30-second quickstart
 
 ```bash
 go install github.com/zzehring/noz/cmd/noz@latest   # needs git + tmux
 
-noz open feature-auth                  # task → isolated git worktree + tmux session
-noz ls                                 # live dashboard across all your sessions
-noz spawn fix-flaky --task "..."       # fan out a contained agent offshoot
-noz close                              # finish up and hop back to where you came from
+noz open feature-auth            # new task → isolated git worktree + tmux session
+noz open bug-123 --agent claude  # open a session and launch an agent in it
+noz ls                           # live dashboard: what's running, working, waiting
+noz close                        # finish up and hop back to where you came from
 ```
 
-## Demo
-
-<!-- DEMO PLACEHOLDER — record the asset and drop it in here. The single
-     highest-value asset is `noz ls` plus a spawn-and-return loop.
-
-     asciinema:  <a href="https://asciinema.org/a/REPLACE"><img src="https://asciinema.org/a/REPLACE.svg" alt="noz demo" width="600"></a>
-     or GIF:     <img src="docs/demo.gif" alt="noz demo" width="600">
-
-     Record with asciinema (→ agg for the GIF):
-       asciinema rec noz-demo.cast --cols 100 --rows 30
-       # run the script below inside the recording, then:
-       agg noz-demo.cast docs/demo.gif
-
-     Exact commands to run on camera (the spawn-and-return loop is the money shot):
-       noz open feature-auth                                # task → isolated worktree + tmux session
-       noz ls                                               # the dashboard: working / waiting / idle
-       noz spawn fix-flaky --task "tidy up flaky retries"   # contained offshoot on its own branch
-       noz ls                                               # parent + offshoot, side by side
-       noz close --report "fixed the retry helper"          # stream context back, hop to parent
-       noz ls                                               # back where we started, report saved
--->
+<!-- DEMO PLACEHOLDER: drop an asciinema/GIF here. Money shot: noz ls + spawn-and-return loop. -->
 
 ## Install
 
@@ -69,19 +53,13 @@ noz close                              # finish up and hop back to where you cam
 go install github.com/zzehring/noz/cmd/noz@latest
 ```
 
-**Requires:** `git` (2.22+) and `tmux` (3.2+). Sessions
-live under `$NOZ_ROOT` (default `~/worktrees/`).
+**Requires:** `git` (2.22+) and `tmux` (3.2+). Sessions live under `$NOZ_ROOT`
+(default `~/worktrees/`). `noz open --pr` additionally requires the
+[GitHub CLI](https://cli.github.com) (`gh`).
 
 ### Homebrew
 
-<!-- PLACEHOLDER — not wired up yet. A Homebrew tap is planned; once the release
-     pipeline publishes the cask this section becomes the recommended install. -->
-
-Coming soon:
-
-```bash
-brew install zzehring/tap/noz   # not available yet — tap is planned
-```
+A Homebrew tap is planned. Check the [releases page](https://github.com/zzehring/noz/releases) in the meantime.
 
 ### Prebuilt binaries
 
@@ -106,9 +84,10 @@ noz mv bug-123 bug-124           # rename across worktree + tmux + branch
 noz rm feature-auth bug-123      # tear down one or more sessions
 ```
 
-**Agents:** noz launches and detects `claude`, `opencode`, `codex`, `gemini`,
-and `pi` (via `--agent` or profile windows). Command-gating hooks exist for
-Claude today; the others are launch/detect only.
+**Agents:** noz works with any agent — sessions and the dashboard are
+agent-agnostic. It launches and detects `claude`, `opencode`, `codex`,
+`gemini`, and `pi` (via `--agent` or profile windows). CEL command-gating hooks
+are wired for Claude today; detection and launch work for all of them.
 
 ## The dashboard
 
@@ -128,14 +107,14 @@ feature (2/3)
   setup needed); a blocked session shows a red `! needs you` once agent hooks
   are wired.
 - Filter by substring or `^prefix`: `noz ls feature`, `noz ls ^review`. Scope with
-  `--active` / `--idle`, `-A` (all repos), `-g` (group size).
+  `--active`/`-a`, `--idle`/`-i`, `-A` (all repos), `-g` (group size).
 
 ## Profiles
 
 A profile is a markdown file with optional YAML frontmatter that shapes a new
-session — the body becomes the session's **context** (written to the `.noz`
-brain, never the repo tree; the agent is launched with a directive to read it),
-and `windows:` open tmux windows alongside your shell.
+session — the body becomes the session's **context** (written to `.noz/<repo>/`,
+a shared brain directory symlinked into each worktree; the agent is given read
+access to it on open), and `windows:` open tmux windows alongside your shell.
 
 ```bash
 noz open incident-42 --profile troubleshoot   # opens k9s + an agent window
@@ -147,9 +126,9 @@ Built-ins: `investigate`, `review`, `troubleshoot`, and `profilesmith` (a meta
 profile that helps you write new ones). Custom profiles live in
 `~/.config/noz/profiles/`.
 
-## Memory & restarts
+## Lifecycle management
 
-Many long-lived agent sessions add up. noz manages the lifecycle:
+Many long-lived agent sessions add up. noz manages the full lifecycle:
 
 ```bash
 noz reap                 # dry-run: idle agents + reclaimable memory
@@ -164,9 +143,9 @@ noz restore              # after a reboot: re-create the tmux sessions that
 ```
 
 `reap` never touches an attached or working session, and SIGTERMs the agent so
-it can checkpoint — resume later with `claude --continue` (noz reminds you when
-you re-enter a session that has prior history). Reclaim estimates come from the
-real `phys_footprint`, measured only on the candidates.
+it can checkpoint — noz reminds you when you re-enter a session that has prior
+history, so you can resume (e.g. `claude --continue`). Memory estimates are
+measured only on idle candidates (macOS: `phys_footprint`; Linux: RSS).
 
 ## tmux integration
 
@@ -202,18 +181,11 @@ noz setup tmux --repo-key C-s --all-key C-a   # use your own keys
 noz setup tmux --children-key ""              # omit the children binding
 ```
 
-**How it works (and why noz, not raw `choose-tree -f`):** the binding asks `noz
-pick <view> --filter` for the matching sessions, then `choose-tree` filters on
-those. The filtering happens in noz on purpose. tmux's format filter falls back
-to the *server's global environment* for any session whose own env lacks a
-`NOZ_*` tag — so filtering `choose-tree` directly on `#{NOZ_REPO}` leaks
-non-noz sessions in and drops untagged ones. noz reads each session's env
-correctly in Go (same source as `noz ls`) and emits a filter that matches the
-resolved names by `session_name`, a per-row primitive that's immune to that
-fallback.
-
 `noz pick` also has `--json` and a plain tab-separated form for scripting or
-your own picker:
+your own picker. The filtering happens in noz (not raw `choose-tree -f`) because
+tmux's format filter falls back to the server's global env for untagged sessions,
+making direct `#{NOZ_REPO}` filtering unreliable — see
+[docs/session-picker.md](docs/session-picker.md) for the full design.
 
 ```bash
 noz pick repo --json     # [{ "session": "...", "repo": "...", "state": "..." }, ...]
@@ -248,21 +220,21 @@ p10k segment that surfaces `working` / `waiting` next to your prompt.
 and spawn* your sessions — know what else is in progress, move you between
 contexts, and fan out task-scoped offshoots. It's stateless (just reads
 fs/tmux), so the agent spawns it as a subprocess; no daemon, ports, or auth.
-**Navigation is free; every create/destroy is gated** — your agent's tool-call
-confirmation is the human-in-the-loop checkpoint.
+**Navigation is free; create and destroy are gated** — the agent must request
+them and you confirm before they run.
 
 ```bash
 noz setup mcp      # prints how to register it
 ```
 
-Register it with Claude Code either way:
+`noz mcp` works with any MCP-compatible client. Claude Code examples:
 
 ```jsonc
-// .mcp.json in your repo (project scope)
+// .mcp.json in your repo (project scope — any MCP client)
 { "mcpServers": { "noz": { "command": "noz", "args": ["mcp"] } } }
 ```
 ```bash
-claude mcp add noz -- noz mcp     # user scope
+claude mcp add noz -- noz mcp     # Claude Code user scope
 ```
 
 Tools:
@@ -283,12 +255,13 @@ noz_spawn (gated) → agent works on its own isolated branch
 `noz spawn` (or `noz_spawn`) creates a task-scoped **offshoot**: its own
 worktree, tmux session, and a seeded context file, tagged with the session it
 was spawned from (`NOZ_PARENT`), so `noz close` returns you there when the work
-is done. The agent works *contained* on its branch (it can't touch `main` or its
-siblings). When it finishes, `noz close --report "..."` (or the `report` field on
-`noz_close`) saves a back-report to `.noz/<repo>/reports/<slug>.md`, so you read
-what it did without re-entering the session. `noz close --merge` fast-forwards
-the branch into your main checkout on the way out (local; PR merges stay manual
-and gated by your forge).
+is done. The agent works in its own isolated worktree directory — it can't
+accidentally modify your main checkout's working tree. When it finishes,
+`noz close --report "..."` (or the `report` field on `noz_close`) saves a
+back-report to `.noz/<repo>/reports/<slug>.md`, so you read what it did without
+re-entering the session. `noz close --merge` fast-forwards the branch into your
+main checkout on the way out (local; PR merges stay manual and gated by your
+forge).
 
 ## Observability (opt-in)
 
@@ -324,9 +297,10 @@ noz setup claude --remove --project-only            # undo
 - **Identity** is tagged on the tmux session (`NOZ_SLUG`, `NOZ_REPO`), so
   same-named slugs in different repos don't collide.
 - **State** (working/waiting) comes from tmux activity.
-- **Recovery** (`noz restore`) brings back recently-active worktrees after a
-  reboot by reading durable, reboot-surviving signals (agent transcript and
-  worktree mtimes) — there's no manifest or cache to keep in sync.
+- **Recovery** (`noz restore`) brings back recently-active sessions after a
+  reboot. Since sessions are just worktrees + tmux, recovery means re-attaching
+  tmux to what already exists — noz reads agent transcripts and worktree mtimes
+  to decide what was active, with no manifest to maintain.
 
 ## Commands
 
@@ -334,15 +308,16 @@ noz setup claude --remove --project-only            # undo
 |---------|-------------|
 | `noz open <slug>` | Start/attach a session (worktree + tmux); `--pr`, `--profile`, `--agent`, `--detach` |
 | `noz spawn <slug>` | Create a task-scoped offshoot (worktree + seeded context); `--task`, `--source`, `--launch` |
-| `noz ls [filter]` | Session dashboard (`-A` all repos, `--active`/`--idle`) |
-| `noz pick [repo\|children\|all]` | Resolve sessions for a view; backs the `choose-tree` picker (`--json`, `--filter`) |
+| `noz ls [filter]` | Session dashboard (`-A` all repos, `--active`/`-a`, `--idle`/`-i`) |
+| `noz pick <repo\|children\|all>` | Resolve sessions for a view; backs the `choose-tree` picker (`--json`, `--filter`) |
 | `noz status` | Current session context (`--json` for a prompt segment) |
 | `noz path <slug>` | Print a session's worktree dir (`cd "$(noz path x)"`) |
 | `noz mv <old> <new>` | Rename a session across worktree + tmux + branch |
 | `noz close` | End the session you're in; hop to parent/last, then tear down (`--report`, `--merge`) |
-| `noz rm <slug>...` | Remove one or more sessions (`-y`/`--force`, `--keep-worktree`, `--delete-branch`) |
-| `noz reap [filter]` | Kill idle agents to reclaim memory |
-| `noz prune [filter]` | Remove stale worktrees with no live session |
+| `noz back` | Hop to the previous tmux session |
+| `noz rm <slug>...` | Remove one or more sessions (`--force`/`-f`, `--keep-worktree`, `--delete-branch`) |
+| `noz reap [filter]` | Preview/kill idle agents to reclaim memory (dry-run by default) |
+| `noz prune` | Remove stale worktrees with no live session (`--force`, `--age`, `--all`) |
 | `noz restore [filter]` | Re-create sessions that were live before a reboot |
 | `noz profile …` | Manage session profiles (`list`/`create`/`edit`/`show`) |
 | `noz setup tmux` | Print the tmux status-bar + jump-key snippet |
