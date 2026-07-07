@@ -79,7 +79,11 @@ func runPrune(cmd *cobra.Command, force bool, maxAge string, all bool) error {
 
 		name := e.Name()
 		path := filepath.Join(root, name)
-		slug := extractSlug(name)
+		_, slug := detectRepo(path, name)
+		if slug == "" {
+			kept++
+			continue
+		}
 
 		info, err := e.Info()
 		if err != nil {
@@ -187,7 +191,10 @@ func removeSessionDir(path, name string) error {
 	if !isWithinRoot(nozRoot(), path) {
 		return fmt.Errorf("refusing to remove %q: outside the noz root", path)
 	}
-	slug := extractSlug(name)
+	_, slug := detectRepo(path, name)
+	if slug == "" {
+		slug = name // fallback label for error messages only
+	}
 
 	// Never discard uncommitted/untracked work — prune only removes clean ones.
 	if worktreeHasChanges(path) {
@@ -202,24 +209,13 @@ func removeSessionDir(path, name string) error {
 		}
 	}
 
-	if tmuxHasSession(slug) {
+	if tmuxHasSession(slug) && isNozSession(slug) {
 		exec.Command("tmux", "kill-session", "-t", slug).Run()
 	}
 
 	return nil
 }
 
-func extractSlug(dirName string) string {
-	// "myrepo-review-123" → "review-123"
-	// "scratch-investigate" → "investigate"
-	if rest, ok := strings.CutPrefix(dirName, "scratch-"); ok {
-		return rest
-	}
-	if _, rest, found := strings.Cut(dirName, "-"); found {
-		return rest
-	}
-	return dirName
-}
 
 func parseAge(s string) (time.Duration, error) {
 	s = strings.TrimSpace(strings.ToLower(s))

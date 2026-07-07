@@ -457,8 +457,12 @@ func openWindows(tmuxBin, dir, shellWindow string, windows []profileWindow) {
 
 // tagNozSession sets session-level env vars so we can identify noz sessions.
 func tagNozSession(tmuxBin, session, slug, repo string) {
-	exec.Command(tmuxBin, "set-environment", "-t", session, "NOZ_SLUG", slug).Run()
-	exec.Command(tmuxBin, "set-environment", "-t", session, "NOZ_REPO", repo).Run()
+	if err := exec.Command(tmuxBin, "set-environment", "-t", session, "NOZ_SLUG", slug).Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "noz: warning: could not tag session %s (NOZ_SLUG): %v\n", session, err)
+	}
+	if err := exec.Command(tmuxBin, "set-environment", "-t", session, "NOZ_REPO", repo).Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "noz: warning: could not tag session %s (NOZ_REPO): %v\n", session, err)
+	}
 }
 
 // linkNozDir creates a persistent .noz dir for the repo and symlinks it

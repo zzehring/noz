@@ -4,7 +4,7 @@
 // integration; the rest are launch/detect only.
 package agent
 
-import "strings"
+import "regexp"
 
 // Agent describes a coding agent.
 type Agent struct {
@@ -77,14 +77,11 @@ func exact(name string) func(string) bool {
 	return func(c string) bool { return c == name }
 }
 
+// claudeVersionRe matches Claude Code's version-string pane command (e.g. "2.1.78").
+var claudeVersionRe = regexp.MustCompile(`^\d+\.\d+\.\d+`)
+
 // isClaudeCmd recognizes Claude Code, whose tmux pane command shows either the
 // binary name or its version string (e.g. "2.1.78").
 func isClaudeCmd(c string) bool {
-	if c == "claude" {
-		return true
-	}
-	if len(c) > 0 && c[0] >= '0' && c[0] <= '9' && strings.Contains(c, ".") {
-		return true
-	}
-	return false
+	return c == "claude" || claudeVersionRe.MatchString(c)
 }

@@ -104,6 +104,12 @@ func runMv(oldSlug, newSlug string) error {
 		}
 		fmt.Fprintf(os.Stderr, "noz: renamed worktree %s -> %s\n", filepath.Base(oldDir), filepath.Base(newDir))
 		renamed = true
+
+		if repo != "" {
+			if err := os.Rename(contextFilePath(repo, oldSlug), contextFilePath(repo, newSlug)); err != nil && !os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "noz: warning: could not rename context file: %v\n", err)
+			}
+		}
 	}
 
 	// Rename tmux session

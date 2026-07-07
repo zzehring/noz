@@ -59,6 +59,7 @@ you're sitting in. close gets you out safely first.
 	cmd.Flags().BoolVar(&opts.merge, "merge", false, "fast-forward this branch into the main checkout first (local; implies --delete-branch)")
 	cmd.Flags().StringVar(&opts.report, "report", "", "save a report to the brain before closing (surfaced to the parent)")
 	cmd.Flags().StringVar(&reportFile, "report-file", "", "read the report body from a file")
+	cmd.MarkFlagsMutuallyExclusive("report", "report-file")
 
 	return cmd
 }

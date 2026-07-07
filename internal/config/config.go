@@ -78,17 +78,6 @@ func (c *Config) PoliciesDir() string {
 	return filepath.Join(c.configDir, "policies")
 }
 
-// WorkDir returns the default working directory for sandboxes.
-// Falls back to current directory if the default doesn't exist.
-func (c *Config) WorkDir() string {
-	home, _ := os.UserHomeDir()
-	dir := filepath.Join(home, "noz")
-	if _, err := os.Stat(dir); err == nil {
-		return dir
-	}
-	cwd, _ := os.Getwd()
-	return cwd
-}
 
 func defaultConfigDir() string {
 	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
