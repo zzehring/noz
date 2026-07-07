@@ -22,7 +22,7 @@ func TestBrainWritePathsStayInNozDirs(t *testing.T) {
 		got  string
 		sub  string
 	}{
-		{"context", contextFilePath(repo, slug), "context"},
+		{"brief", briefPath(repo, slug), "brief"},
 		{"report", reportFilePath(repo, slug), "reports"},
 	}
 

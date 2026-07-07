@@ -90,16 +90,16 @@ Examples:
 	cmd.RegisterFlagCompletionFunc("agent", completeAgents)
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "proceed even if the slug is a live session in another repo")
 	cmd.Flags().BoolVarP(&detach, "detach", "d", false, "create the session but don't attach/switch to it")
-	cmd.Flags().StringVar(&task, "task", "", "seed task notes into the session context (new sessions only)")
+	cmd.Flags().StringVar(&task, "task", "", "seed a task brief for the session (new sessions only)")
 
 	return cmd
 }
 
 // agentPrimary returns window 0's spec that launches the named agent, or nil
-// when name is empty. Errors on an unknown agent. When contextRef is non-empty
+// when name is empty. Errors on an unknown agent. When briefRef is non-empty
 // and the agent supports an initial prompt, the agent is launched with a
 // directive to read that context file first.
-func agentPrimary(name, contextRef string) (*profileWindow, error) {
+func agentPrimary(name, briefRef string) (*profileWindow, error) {
 	if name == "" {
 		return nil, nil
 	}
@@ -108,8 +108,8 @@ func agentPrimary(name, contextRef string) (*profileWindow, error) {
 		return nil, fmt.Errorf("unknown agent %q (known: %s)", name, strings.Join(agent.Names(), ", "))
 	}
 	argv := a.Launch
-	if contextRef != "" {
-		directive := fmt.Sprintf("Read %s for this session's context, then help me with it.", contextRef)
+	if briefRef != "" {
+		directive := fmt.Sprintf("Read %s for this session's context, then help me with it.", briefRef)
 		argv = a.LaunchWith(directive)
 	}
 	return &profileWindow{Name: a.Name, Cmd: shellJoin(argv)}, nil
@@ -203,16 +203,16 @@ func runOpenWorktree(slug, baseBranch, profile, agentName, task string, force bo
 		}
 		windows = w
 		if wrote {
-			ctxRef = contextRef(slug)
+			ctxRef = briefRef(slug)
 		}
 	}
 
 	// Seed task context on new session (when no profile already wrote context).
 	if created && task != "" && ctxRef == "" {
-		if err := writeSessionContext(repo, slug, task); err != nil {
+		if err := writeSessionBrief(repo, slug, task); err != nil {
 			fmt.Fprintf(os.Stderr, "noz: warning: could not write task context: %v\n", err)
 		} else {
-			ctxRef = contextRef(slug)
+			ctxRef = briefRef(slug)
 		}
 	}
 
@@ -289,7 +289,7 @@ func runOpenPR(prNumber string, depth int, profile, agentName string, force bool
 			}
 			windows = w
 			if wrote {
-				ctxRef = contextRef(slug)
+				ctxRef = briefRef(slug)
 			}
 		}
 	}
@@ -486,12 +486,12 @@ func linkNozDir(root, repo, wtDir string) {
 	link := filepath.Join(wtDir, ".noz")
 
 	// Create persistent dir and standard subdirs if they don't exist.
-	// brain/ is user-owned; context/ and reports/ are noz-managed.
+	// brain/ is user-owned; brief/ and reports/ are noz-managed.
 	if err := os.MkdirAll(nozDir, 0755); err != nil {
 		fmt.Fprintf(os.Stderr, "noz: warning: could not create .noz dir: %v\n", err)
 		return
 	}
-	for _, sub := range []string{"brain", "context", "reports"} {
+	for _, sub := range []string{"brain", "brief", "reports"} {
 		os.MkdirAll(filepath.Join(nozDir, sub), 0755) //nolint:errcheck
 	}
 	writeBrainReadme(nozDir)
@@ -518,7 +518,7 @@ func linkNozDir(root, repo, wtDir string) {
 // readSessionTask returns the first non-empty line of the ## Task section from
 // a session's context file, or "" if the file is absent or has no task.
 func readSessionTask(repo, slug string) string {
-	data, err := os.ReadFile(contextFilePath(repo, slug))
+	data, err := os.ReadFile(briefPath(repo, slug))
 	if err != nil {
 		return ""
 	}
@@ -546,21 +546,32 @@ func extractTaskLine(content string) string {
 }
 
 // brainReadme documents the brain layout so the ownership split is discoverable
-// from inside the dir itself, not just the docs. noz writes only context/ and
+// from inside the dir itself, not just the docs. noz writes only brief/ and
 // reports/; everything else — including brain/ — is yours.
 const brainReadme = `# .noz brain
 
-Shared per-repo workspace, symlinked into each worktree as ` + "`.noz/`" + `.
+Per-repo workspace shared across this repo's worktrees, symlinked into each
+as ` + "`.noz/`" + `. Three directories, three distinct jobs:
 
-- ` + "`brain/`" + `   — yours. Notes, scratch, whatever you want to carry across
-             sessions. noz never writes here.
-- ` + "`context/`" + ` — noz-authored task notes, one per session (` + "`<slug>.md`" + `),
-             written when you seed a task (` + "`--task`" + ` / ` + "`noz spawn`" + `).
-- ` + "`reports/`" + ` — back-reports from ` + "`noz close --report`" + `, one per session.
+- ` + "`brain/`" + `   — YOURS. Durable knowledge you carry across sessions: notes,
+             conventions, scratch. noz never reads or writes here.
 
-noz recreates these directories on ` + "`noz open`" + `, but not their contents:
-a deleted report is gone for good; a deleted context note won't reappear
-unless you re-seed the task. The dirs are safe to delete; the files are history.
+- ` + "`brief/`" + `   — the BRIEF (noz -> agent). One file per session, ` + "`<slug>.md`" + `,
+             written once when a session is created with a task
+             (` + "`noz open --task`" + `, ` + "`noz spawn --task`" + `). The agent's marching
+             orders: the task, and for offshoots how to return when done.
+             An input read at launch — NOT a running log. noz does not keep
+             it in sync as work proceeds; put durable knowledge in brain/ and
+             outcomes in a report.
+
+- ` + "`reports/`" + ` — the DEBRIEF (agent -> you). One file per session, ` + "`<slug>.md`" + `,
+             written by ` + "`noz close --report`" + ` when a session ends. What the
+             session did, found, and what's left — so you can read the outcome
+             without re-entering, or after the session is torn down.
+
+noz recreates these directories on ` + "`noz open`" + `, never their contents. Deleting
+a report loses it for good; deleting a brief won't return unless you re-seed
+the task. The dirs are disposable; the files are history.
 `
 
 // writeBrainReadme drops a layout marker in the brain root. Best-effort and

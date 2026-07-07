@@ -113,7 +113,7 @@ func teardownSession(slug, wtDir, scratchDir, root string, force, keepWorktree, 
 		// orphaned once the session is gone (no cruft left in the brain).
 		if wtDir != "" {
 			if repo := strings.TrimSuffix(filepath.Base(wtDir), "-"+slug); repo != "" {
-				os.Remove(contextFilePath(repo, slug))
+				os.Remove(briefPath(repo, slug))
 			}
 		}
 	}

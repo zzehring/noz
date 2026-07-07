@@ -52,11 +52,11 @@ start it reading the seeded context immediately.
 		},
 	}
 
-	cmd.Flags().StringVar(&task, "task", "", "what this offshoot should work on (seeds its context)")
+	cmd.Flags().StringVar(&task, "task", "", "what this offshoot should work on (seeds its brief)")
 	cmd.Flags().StringVar(&source, "source", "", "base branch to start from (default: current HEAD)")
 	cmd.Flags().StringVar(&agentName, "agent", "claude", "agent to launch with --launch")
 	cmd.RegisterFlagCompletionFunc("agent", completeAgents)
-	cmd.Flags().BoolVar(&launch, "launch", false, "start the agent immediately, reading the seeded context")
+	cmd.Flags().BoolVar(&launch, "launch", false, "start the agent immediately, reading the seeded brief")
 
 	return cmd
 }
@@ -97,7 +97,7 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 
 	linkNozDir(root, repo, wtDir)
 
-	if err := writeOffshootContext(repo, spec.Slug, spec.Task, parent); err != nil {
+	if err := writeOffshootBrief(repo, spec.Slug, spec.Task, parent); err != nil {
 		return "", err
 	}
 	grantBrainAccess(wtDir, repo) // read+write the .noz brain without prompting
@@ -116,7 +116,7 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 		if !ok {
 			return "", fmt.Errorf("unknown agent %q (known: %s)", agentName, strings.Join(agent.Names(), ", "))
 		}
-		directive := fmt.Sprintf("Read %s for this session's context, then help me with it.", contextRef(spec.Slug))
+		directive := fmt.Sprintf("Read %s for this session's context, then help me with it.", briefRef(spec.Slug))
 		createArgs = append(createArgs, "-n", a.Name, shellJoin(a.LaunchWith(directive)))
 	}
 	c := exec.Command(tmuxBin, createArgs...)
@@ -131,22 +131,22 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 	return wtDir, nil
 }
 
-// writeSessionContext seeds a session's task note into the .noz brain.
-// Simpler than writeOffshootContext — no parent/return boilerplate.
-func writeSessionContext(repo, slug, task string) error {
+// writeSessionBrief seeds a session's task note into the .noz brain.
+// Simpler than writeOffshootBrief — no parent/return boilerplate.
+func writeSessionBrief(repo, slug, task string) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Session: %s\n\n", slug)
 	fmt.Fprintf(&b, "## Task\n\n%s\n", strings.TrimSpace(task))
-	ctxPath := contextFilePath(repo, slug)
+	ctxPath := briefPath(repo, slug)
 	if err := os.MkdirAll(filepath.Dir(ctxPath), 0755); err != nil {
 		return fmt.Errorf("writing session context: %w", err)
 	}
 	return os.WriteFile(ctxPath, []byte(b.String()), 0644)
 }
 
-// writeOffshootContext seeds an offshoot's marching orders into the .noz brain:
+// writeOffshootBrief seeds an offshoot's marching orders into the .noz brain:
 // its task plus, when it has a parent, how to return when done.
-func writeOffshootContext(repo, slug, task, parent string) error {
+func writeOffshootBrief(repo, slug, task, parent string) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Offshoot: %s\n\n", slug)
 	if parent != "" {
@@ -156,7 +156,7 @@ func writeOffshootContext(repo, slug, task, parent string) error {
 	}
 	fmt.Fprintf(&b, "## Task\n\n%s\n", strings.TrimSpace(task))
 
-	ctxPath := contextFilePath(repo, slug)
+	ctxPath := briefPath(repo, slug)
 	if err := os.MkdirAll(filepath.Dir(ctxPath), 0755); err != nil {
 		return fmt.Errorf("writing offshoot context: %w", err)
 	}

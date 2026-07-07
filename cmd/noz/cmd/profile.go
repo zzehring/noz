@@ -423,31 +423,31 @@ func applyProfile(wtDir, profileName string, data ProfileData) (windows []profil
 		return windows, false, nil
 	}
 
-	ctxPath := contextFilePath(data.Repo, data.Slug)
+	ctxPath := briefPath(data.Repo, data.Slug)
 	if err := os.MkdirAll(filepath.Dir(ctxPath), 0755); err != nil {
 		return windows, false, fmt.Errorf("writing session context: %w", err)
 	}
 	if err := os.WriteFile(ctxPath, []byte(body), 0644); err != nil {
 		return windows, false, fmt.Errorf("writing session context: %w", err)
 	}
-	fmt.Fprintf(os.Stderr, "noz: wrote session context to %s\n", contextRef(data.Slug))
+	fmt.Fprintf(os.Stderr, "noz: wrote session context to %s\n", briefRef(data.Slug))
 	return windows, true, nil
 }
 
-// contextFilePath is the canonical location of a session's noz-authored context
-// file: a dedicated context/ subdir of the shared .noz brain
-// (root/.noz/<repo>/context/<slug>.md). Kept in its own subdir so it doesn't
+// briefPath is the canonical location of a session's noz-authored brief:
+// a dedicated brief/ subdir of the shared .noz brain
+// (root/.noz/<repo>/brief/<slug>.md). Kept in its own subdir so it doesn't
 // clutter the brain root (ROADMAP etc., or per-user dirs). Written there — not
 // the repo tree — so it never dirties the worktree; reachable from inside the
-// worktree via the .noz symlink as contextRef(slug).
-func contextFilePath(repo, slug string) string {
-	return filepath.Join(nozRoot(), ".noz", repo, "context", slug+".md")
+// worktree via the .noz symlink as briefRef(slug).
+func briefPath(repo, slug string) string {
+	return filepath.Join(nozRoot(), ".noz", repo, "brief", slug+".md")
 }
 
-// contextRef is how the context file is referenced from inside the worktree
+// briefRef is how the brief is referenced from inside the worktree
 // (via the .noz symlink) — what we tell the agent to read.
-func contextRef(slug string) string {
-	return ".noz/context/" + slug + ".md"
+func briefRef(slug string) string {
+	return ".noz/brief/" + slug + ".md"
 }
 
 // grantContextRead lets an agent in this worktree read its .noz context without

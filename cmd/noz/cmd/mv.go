@@ -111,7 +111,7 @@ func runMv(oldSlug, newSlug string) error {
 		renamed = true
 
 		if repo != "" {
-			if err := os.Rename(contextFilePath(repo, oldSlug), contextFilePath(repo, newSlug)); err != nil && !os.IsNotExist(err) {
+			if err := os.Rename(briefPath(repo, oldSlug), briefPath(repo, newSlug)); err != nil && !os.IsNotExist(err) {
 				fmt.Fprintf(os.Stderr, "noz: warning: could not rename context file: %v\n", err)
 			}
 		}
