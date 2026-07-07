@@ -120,7 +120,7 @@ func splitSegments(input string) []string {
 			continue
 		}
 
-		if r == ';' {
+		if r == ';' || r == '\n' {
 			segments = append(segments, current.String())
 			current.Reset()
 			continue
@@ -156,15 +156,20 @@ func parseSegment(seg string) (*Command, error) {
 	}
 
 	name := tokens[startIdx]
+	args := tokens[startIdx+1:]
 
-	// Check for command substitution in the command name itself
-	if strings.Contains(name, "$(") || strings.Contains(name, "`") {
-		return nil, fmt.Errorf("command substitution not allowed in command name: %s", name)
+	// Reject command substitution anywhere in the command or its arguments —
+	// the gate parses before the real shell runs, so $(…) in an arg would
+	// execute unseen by any rule.
+	for _, tok := range append([]string{name}, args...) {
+		if strings.Contains(tok, "$(") || strings.Contains(tok, "`") {
+			return nil, fmt.Errorf("command substitution not allowed: %s", tok)
+		}
 	}
 
 	return &Command{
 		Name: name,
-		Args: tokens[startIdx+1:],
+		Args: args,
 	}, nil
 }
 

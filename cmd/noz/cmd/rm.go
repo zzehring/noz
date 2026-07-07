@@ -93,6 +93,9 @@ func teardownSession(slug, wtDir, scratchDir, root string, force, keepWorktree, 
 
 	if !keepWorktree {
 		if wtDir != "" && dirExists(wtDir) {
+			if !isWithinRoot(root, wtDir) {
+				return fmt.Errorf("refusing to remove %q: outside the noz root", wtDir)
+			}
 			if err := removeWorktree(wtDir, slug, force); err != nil {
 				return err
 			}
@@ -152,7 +155,7 @@ func removeWorktree(wtDir, slug string, force bool) error {
 			// Non-interactive (agent session, pipe): don't silently abort or
 			// block on stdin — fail with the exact flag to re-run with.
 			if !stdinIsTerminal() {
-				return fmt.Errorf("%s has uncommitted changes; re-run with -y/--force to discard and remove", wtDir)
+				return fmt.Errorf("%s has uncommitted changes; re-run with --force/-f to discard and remove", wtDir)
 			}
 			fmt.Fprintf(os.Stderr, "noz: %s has uncommitted changes.\n", wtDir)
 			fmt.Fprint(os.Stderr, "Force-remove anyway? [y/N] ")
@@ -170,12 +173,11 @@ func removeWorktree(wtDir, slug string, force bool) error {
 }
 
 func worktreeIsDirty(dir string) bool {
-	cmd := exec.Command("git", "-C", dir, "diff", "--quiet")
-	if cmd.Run() != nil {
-		return true
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
+	if err != nil {
+		return false
 	}
-	cmd = exec.Command("git", "-C", dir, "diff", "--cached", "--quiet")
-	return cmd.Run() != nil
+	return len(strings.TrimSpace(string(out))) > 0
 }
 
 func tmuxHasSession(name string) bool {

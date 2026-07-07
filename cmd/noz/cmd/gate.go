@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/zzehring/noz/internal/config"
@@ -80,7 +81,10 @@ func runGate(inputFormat, tool, guardLog string) error {
 	case "read", "write", "edit", "glob", "grep":
 		return gateFile(g, tool, inputFormat, guardLog)
 	default:
-		return gateBash(g, inputFormat, guardLog)
+		logGuard(guardLog, "DENY", tool, "unknown-tool", "")
+		fmt.Fprintf(os.Stderr, "noz: unknown tool type %q — denied\n", tool)
+		os.Exit(2)
+		return nil
 	}
 }
 
@@ -268,5 +272,5 @@ func logGuard(path, verdict, cmd, rule, reason string) {
 	}
 	defer f.Close()
 
-	fmt.Fprintf(f, "%-6s %s (rule: %s)\n", verdict, cmd, rule)
+	fmt.Fprintf(f, "%s %-6s %s (rule: %s)\n", time.Now().UTC().Format(time.RFC3339), verdict, cmd, rule)
 }
