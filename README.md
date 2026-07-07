@@ -22,17 +22,22 @@ and tmux session, keeps the working context (task notes, back-reports, history)
 alongside the workspace, and gives you one dashboard across everything. Switching
 tasks means picking a session, not reconstructing state from memory.
 
-It keeps **no state of its own**: everything is derived live from the filesystem,
-git, and tmux. Sessions can't drift, deletions are clean, and after a reboot
-`noz restore` brings everything back — no manifest to maintain.
+It keeps **no session manifest**: which sessions exist and what they're doing is
+derived live from the filesystem, git, and tmux. Sessions can't drift, deletions
+are clean, and after a reboot `noz restore` brings everything back — nothing to
+maintain. The only bytes noz persists are the shared `.noz` brain (your task
+briefs and back-reports), which you own and can delete at any time.
+
+It's for terminal-native engineers running several agents at once — not an IDE
+replacement, and not a daemon. A static binary that composes with the tmux and
+git you already use.
 
 **Why it's useful.** Running several agents in parallel, each needs an isolated
 workspace so work doesn't collide, and you need to know what's happening without
 jumping into every session. noz isolates each task in its own worktree, surfaces
 what's working and what's waiting on one screen, and keeps **you in control**:
 the agent can see and navigate sessions, but creating and destroying is always
-your call. It's a static binary that composes with tmux and git rather than
-replacing them — adopt it for one repo, drop it cleanly if it doesn't fit.
+your call. Adopt it for one repo, drop it cleanly if it doesn't fit.
 
 ### 30-second quickstart
 
@@ -84,10 +89,13 @@ noz mv bug-123 bug-124           # rename across worktree + tmux + branch
 noz rm feature-auth bug-123      # tear down one or more sessions
 ```
 
-**Agents:** noz works with any agent — sessions and the dashboard are
-agent-agnostic. It launches and detects `claude`, `opencode`, `codex`,
-`gemini`, and `pi` (via `--agent` or profile windows). CEL command-gating hooks
-are wired for Claude today; detection and launch work for all of them.
+**Agents:** the sessions, worktrees, and dashboard are agent-agnostic — noz
+launches and detects `claude`, `opencode`, `codex`, `gemini`, and `pi` (via
+`--agent` or profile windows), and none of that assumes a particular agent.
+Two conveniences are Claude-specific today and only kick in for Claude: the CEL
+command-gating hooks, and the brain auto-grant (a `.claude/settings.local.json`
+so the agent can read its brief without a prompt). For any other agent noz
+writes no agent config into your worktree.
 
 ## The dashboard
 
@@ -220,8 +228,13 @@ p10k segment that surfaces `working` / `waiting` next to your prompt.
 and spawn* your sessions — know what else is in progress, move you between
 contexts, and fan out task-scoped offshoots. It's stateless (just reads
 fs/tmux), so the agent spawns it as a subprocess; no daemon, ports, or auth.
-**Navigation is free; create and destroy are gated** — the agent must request
-them and you confirm before they run.
+**Navigation is free; create and destroy are gated.** The gating is enforced by
+your MCP client's tool-approval prompt — the agent must *request* `noz_spawn` /
+`noz_rm` / `noz_close`, and you approve the call before it runs. noz doesn't add
+its own confirmation on top, so this holds only as long as your client actually
+prompts: if you auto-approve tool calls, these run unattended. Since `noz mcp`
+is just a subprocess that reads fs/tmux, the trust boundary is "any process that
+can run `noz mcp` can propose these" — bounded by that approval prompt.
 
 ```bash
 noz setup mcp      # prints how to register it
@@ -301,6 +314,34 @@ noz setup claude --remove --project-only            # undo
   reboot. Since sessions are just worktrees + tmux, recovery means re-attaching
   tmux to what already exists — noz reads agent transcripts and worktree mtimes
   to decide what was active, with no manifest to maintain.
+
+## What noz touches (and how to remove it)
+
+noz is stateless, but it does create a few files. All of them are yours to
+inspect or delete:
+
+| Path | What | When |
+|------|------|------|
+| `$NOZ_ROOT/` (default `~/worktrees/`) | one worktree dir per session | `noz open` / `spawn` |
+| `$NOZ_ROOT/.noz/<repo>/` | the shared brain: `brief/`, `reports/`, `brain/` | first `open` per repo |
+| `~/.config/noz/` | your profiles and gate policies | `noz profile` / `setup` |
+| `<worktree>/.claude/settings.local.json` | Claude brain-grant (Claude sessions only) | `open` with `--agent claude` |
+| `<repo>/.claude/settings.json` | CEL gate hooks | only if you run `noz setup claude` |
+| `<file>.noz.bak` | a backup before noz edits a file | `noz setup` |
+| `.git/info/exclude` entries | keeps `.noz` / `.claude/settings.local.json` out of git | first `open` per repo |
+
+noz never edits your tmux config or your tracked repo files. To remove it
+cleanly:
+
+```bash
+noz rm <slug>...              # tear down sessions (worktrees + tmux)
+noz setup claude --remove     # undo the gate hooks (if you installed them)
+rm -rf "$NOZ_ROOT/.noz"       # drop briefs/reports/brain (keep it if you want the notes)
+rm "$(command -v noz)"        # remove the binary
+```
+
+The per-worktree `.claude/settings.local.json` files are gitignored and
+harmless; they vanish when you `noz rm` the session.
 
 ## Commands
 
