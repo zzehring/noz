@@ -19,8 +19,8 @@
 is the bottleneck — knowing what each agent is working on, what you left off,
 and how to get back to it cleanly. `noz` gives each task its own git worktree
 and tmux session, keeps the working context (task notes, back-reports, history)
-alongside the workspace, and gives you one dashboard across everything. Switching
-tasks means picking a session, not reconstructing state from memory.
+alongside the workspace, and gives you one dashboard across everything. To switch
+tasks you pick a session and the context is already there.
 
 It keeps **no session manifest**: which sessions exist and what they're doing is
 derived live from the filesystem, git, and tmux. Sessions can't drift, deletions
@@ -28,9 +28,9 @@ are clean, and after a reboot `noz restore` brings everything back — nothing t
 maintain. The only bytes noz persists are the shared `.noz` brain (your task
 briefs and back-reports), which you own and can delete at any time.
 
-It's for terminal-native engineers running several agents at once — not an IDE
-replacement, and not a daemon. A static binary that composes with the tmux and
-git you already use.
+It's built for engineers who live in the terminal and run several agents at
+once. A single static binary that builds on the tmux and git you already have.
+No IDE, no daemon.
 
 **Why it's useful.** Running several agents in parallel, each needs an isolated
 workspace so work doesn't collide, and you need to know what's happening without

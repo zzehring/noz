@@ -560,9 +560,9 @@ as ` + "`.noz/`" + `. Three directories, three distinct jobs:
              written once when a session is created with a task
              (` + "`noz open --task`" + `, ` + "`noz spawn --task`" + `). The agent's marching
              orders: the task, and for offshoots how to return when done.
-             An input read at launch — NOT a running log. noz does not keep
-             it in sync as work proceeds; put durable knowledge in brain/ and
-             outcomes in a report.
+             The agent reads it once at launch. noz doesn't update it as work
+             proceeds, so keep durable knowledge in brain/ and write outcomes
+             to a report.
 
 - ` + "`reports/`" + ` — the DEBRIEF (agent -> you). One file per session, ` + "`<slug>.md`" + `,
              written by ` + "`noz close --report`" + ` when a session ends. What the
