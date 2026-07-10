@@ -41,14 +41,19 @@ func TestClaudeState(t *testing.T) {
 		t.Errorf("cached state = %q, want needs-you", got)
 	}
 
-	// No cache, recent activity → working.
-	if got := claudeState(sessionInfo{slug: "y", hasTmux: true, lastActive: time.Now()}); got != "working" {
+	// No cache, agent running, recent activity → working.
+	if got := claudeState(sessionInfo{slug: "y", hasTmux: true, agent: "claude", lastActive: time.Now()}); got != "working" {
 		t.Errorf("recent state = %q, want working", got)
 	}
 
-	// No cache, stale activity → waiting.
+	// No cache, agent running, stale activity → waiting.
 	old := time.Now().Add(-time.Hour)
-	if got := claudeState(sessionInfo{slug: "z", hasTmux: true, lastActive: old}); got != "waiting" {
+	if got := claudeState(sessionInfo{slug: "z", hasTmux: true, agent: "claude", lastActive: old}); got != "waiting" {
 		t.Errorf("stale state = %q, want waiting", got)
+	}
+
+	// No agent running (plain shell) with recent output → no state, not "working".
+	if got := claudeState(sessionInfo{slug: "w", hasTmux: true, lastActive: time.Now()}); got != "" {
+		t.Errorf("agentless state = %q, want \"\"", got)
 	}
 }

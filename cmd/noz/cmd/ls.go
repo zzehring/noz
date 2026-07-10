@@ -194,7 +194,7 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 	// Nudge to recover sessions that were live last time but aren't now —
 	// typically a reboot killed tmux while the worktrees survived.
 	if n := len(strandedSessions(sessions)); n > 0 {
-		fmt.Fprintf(w, "%s%d session(s) aren't running — `noz restore` to bring them back (e.g. after a reboot)%s\n",
+		fmt.Fprintf(w, "%s%d session(s) were active recently but aren't running — `noz restore` brings them back (e.g. after a reboot)%s\n",
 			cYellow, n, cReset)
 	}
 
@@ -569,7 +569,12 @@ func claudeState(s sessionInfo) string {
 			return st
 		}
 	}
-	// Fallback: infer from how recently the session produced output.
+	// Fallback: infer from how recently the session produced output. Only
+	// meaningful when an agent is actually running in the session — a plain
+	// shell that printed something 5s ago isn't "working".
+	if s.agent == "" {
+		return ""
+	}
 	if s.lastActive.IsZero() {
 		return ""
 	}
