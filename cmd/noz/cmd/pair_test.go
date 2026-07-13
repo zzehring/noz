@@ -1,15 +1,18 @@
 package cmd
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValidSlug(t *testing.T) {
-	ok := []string{"feature-auth", "review-574366", "i-flaky-login-test", "x"}
+	ok := []string{"feature-auth", "review-574366", "i-flaky-login-test", "x", strings.Repeat("a", maxSlugLen)}
 	for _, s := range ok {
 		if err := validSlug(s); err != nil {
 			t.Errorf("validSlug(%q) = %v, want nil", s, err)
 		}
 	}
-	bad := []string{"", "../../etc", "a/b", `a\b`, "-rf", ".hidden", "has space", "x\ty"}
+	bad := []string{"", "../../etc", "a/b", `a\b`, "-rf", ".hidden", "has space", "x\ty", strings.Repeat("a", maxSlugLen+1)}
 	for _, s := range bad {
 		if err := validSlug(s); err == nil {
 			t.Errorf("validSlug(%q) = nil, want error", s)

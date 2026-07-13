@@ -121,16 +121,18 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 	// Determine if repo column is needed (multiple repos present)
 	showRepo := hasMultipleRepos(sessions)
 
-	// Compute max slug width for alignment
+	// Column width fits the longest slug — never truncate a name, since a long
+	// slug you can't read defeats the point of naming the session.
 	maxSlug := 0
 	for _, s := range sessions {
 		if len(s.slug) > maxSlug {
 			maxSlug = len(s.slug)
 		}
 	}
-	if maxSlug > 45 {
-		maxSlug = 45
-	}
+
+	// The session this command was invoked from, so we can mark it (there can
+	// be several attached at once — "attached" alone doesn't say which is you).
+	current := currentTmuxSession()
 
 	// Column header
 	hasActive := false
@@ -183,7 +185,7 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 			} else {
 				staleCount++
 			}
-			renderSession(w, s, maxSlug, showRepo)
+			renderSession(w, s, maxSlug, showRepo, current)
 		}
 	}
 
@@ -193,9 +195,9 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 
 	// Nudge to recover sessions that were live last time but aren't now —
 	// typically a reboot killed tmux while the worktrees survived.
-	if n := len(strandedSessions(sessions)); n > 0 {
-		fmt.Fprintf(w, "%s%d session(s) were active recently but aren't running — `noz restore` brings them back (e.g. after a reboot)%s\n",
-			cYellow, n, cReset)
+	if stranded := strandedSessions(sessions); len(stranded) > 0 {
+		fmt.Fprintf(w, "%s%d session(s) were active recently but aren't running (%s) — `noz restore <slug>` brings one back (e.g. after a reboot)%s\n",
+			cYellow, len(stranded), strings.Join(stranded, ", "), cReset)
 	}
 
 	return nil
@@ -230,7 +232,7 @@ func createdStr(s sessionInfo) string {
 	return relativeTime(s.created)
 }
 
-func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {
+func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool, current string) {
 	name := s.slug
 	if len(name) > slugWidth {
 		name = name[:slugWidth-1] + "…"
@@ -239,6 +241,11 @@ func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {
 	repoStr := ""
 	if showRepo && s.repo != "" {
 		repoStr = fmt.Sprintf("  %s%s%s", cGray, s.repo, cReset)
+	}
+
+	hereStr := ""
+	if current != "" && s.slug == current {
+		hereStr = "  " + cBold + cGreen + "← here" + cReset
 	}
 
 	taskStr := ""
@@ -269,20 +276,20 @@ func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool) {
 			idleStr = relativeTime(s.lastActive)
 		}
 
-		fmt.Fprintf(w, "  %s %-*s  %s%-9s%s  %s%-3s%s  %s%-6s%s  %s%-7s%s%s%s\n",
+		fmt.Fprintf(w, "  %s %-*s  %s%-9s%s  %s%-3s%s  %s%-6s%s  %s%-7s%s%s%s%s\n",
 			marker, slugWidth, name,
 			stateColor, stateLabel, cReset,
 			cCyan, winStr, cReset,
 			cYellow, idleStr, cReset,
 			cGray, createdStr(s), cReset,
-			repoStr, taskStr)
+			repoStr, taskStr, hereStr)
 	} else {
 		marker := cGray + "○" + cReset
-		fmt.Fprintf(w, "  %s %s%-*s%s  %-9s  %-3s  %-6s  %s%-7s%s%s%s\n",
+		fmt.Fprintf(w, "  %s %s%-*s%s  %-9s  %-3s  %-6s  %s%-7s%s%s%s%s\n",
 			marker, cDim, slugWidth, name, cReset,
 			"", "", "",
 			cGray, createdStr(s), cReset,
-			repoStr, taskStr)
+			repoStr, taskStr, hereStr)
 	}
 }
 

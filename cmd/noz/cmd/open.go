@@ -618,9 +618,17 @@ func addToExclude(path, pattern string) {
 // validSlug rejects names that could escape a directory or confuse tmux/git.
 // Anything that becomes a path or a tmux session name (slugs, profile names)
 // must be simple: no separators, no traversal, no leading dash/dot, no spaces.
+// maxSlugLen bounds slug length so names stay readable and the `noz ls` table
+// never has to truncate or blow out its width. Enforced at creation, so
+// everything downstream can assume slugs are short.
+const maxSlugLen = 48
+
 func validSlug(name string) error {
 	if name == "" {
 		return fmt.Errorf("empty name")
+	}
+	if len(name) > maxSlugLen {
+		return fmt.Errorf("invalid name %q: too long (%d chars, max %d)", name, len(name), maxSlugLen)
 	}
 	if strings.ContainsAny(name, `/\`) {
 		return fmt.Errorf("invalid name %q: no '/' or '\\'", name)
