@@ -63,7 +63,7 @@ Examples:
 			}
 
 			slug = args[0]
-			if err := validSlug(slug); err != nil {
+			if err := validNewSlug(slug); err != nil {
 				return err
 			}
 			if len(args) > 1 {
@@ -239,7 +239,7 @@ func runOpenPR(prNumber string, depth int, profile, agentName string, force bool
 	}
 
 	slug := "review-" + prNumber
-	if err := validSlug(slug); err != nil {
+	if err := validNewSlug(slug); err != nil {
 		return err
 	}
 	if !force {
@@ -619,16 +619,27 @@ func addToExclude(path, pattern string) {
 // Anything that becomes a path or a tmux session name (slugs, profile names)
 // must be simple: no separators, no traversal, no leading dash/dot, no spaces.
 // maxSlugLen bounds slug length so names stay readable and the `noz ls` table
-// never has to truncate or blow out its width. Enforced at creation, so
-// everything downstream can assume slugs are short.
+// never has to truncate or blow out its width. Enforced only when creating a
+// slug (validNewSlug) — an existing over-length session must still be
+// removable/renamable, so plain validSlug (used by rm/mv/path) skips it.
 const maxSlugLen = 48
+
+// validNewSlug validates a slug that is about to be created: safety checks plus
+// the length cap. Use this in open/spawn/mv-target; use validSlug to reference
+// an existing session.
+func validNewSlug(name string) error {
+	if err := validSlug(name); err != nil {
+		return err
+	}
+	if len(name) > maxSlugLen {
+		return fmt.Errorf("invalid name %q: too long (%d chars, max %d)", name, len(name), maxSlugLen)
+	}
+	return nil
+}
 
 func validSlug(name string) error {
 	if name == "" {
 		return fmt.Errorf("empty name")
-	}
-	if len(name) > maxSlugLen {
-		return fmt.Errorf("invalid name %q: too long (%d chars, max %d)", name, len(name), maxSlugLen)
 	}
 	if strings.ContainsAny(name, `/\`) {
 		return fmt.Errorf("invalid name %q: no '/' or '\\'", name)

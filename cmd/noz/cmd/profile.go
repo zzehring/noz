@@ -75,7 +75,7 @@ func newProfileCreateCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			if err := validSlug(name); err != nil {
+			if err := validNewSlug(name); err != nil {
 				return err
 			}
 			dir := profilesDir()
@@ -133,7 +133,7 @@ func newProfileEditCmd() *cobra.Command {
 		ValidArgsFunction: completeProfileNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			if err := validSlug(name); err != nil {
+			if err := validNewSlug(name); err != nil {
 				return err
 			}
 			path := filepath.Join(profilesDir(), name+".md")
@@ -153,7 +153,7 @@ func newProfileShowCmd() *cobra.Command {
 		ValidArgsFunction: completeProfileNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
-			if err := validSlug(name); err != nil {
+			if err := validNewSlug(name); err != nil {
 				return err
 			}
 			// Try user profile first

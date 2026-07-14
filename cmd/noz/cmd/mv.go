@@ -43,7 +43,7 @@ func runMv(oldSlug, newSlug string) error {
 	if err := validSlug(oldSlug); err != nil {
 		return err
 	}
-	if err := validSlug(newSlug); err != nil {
+	if err := validNewSlug(newSlug); err != nil {
 		return err
 	}
 	if oldSlug == newSlug {

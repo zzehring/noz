@@ -179,7 +179,7 @@ type mcpSwitchOutput struct {
 }
 
 func mcpSwitch(ctx context.Context, req *mcp.CallToolRequest, in mcpSwitchInput) (*mcp.CallToolResult, mcpSwitchOutput, error) {
-	if err := validSlug(in.Slug); err != nil {
+	if err := validNewSlug(in.Slug); err != nil {
 		return nil, mcpSwitchOutput{Message: err.Error()}, nil
 	}
 	if !tmuxHasSession(in.Slug) {

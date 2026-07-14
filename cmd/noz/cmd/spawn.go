@@ -67,7 +67,7 @@ start it reading the seeded context immediately.
 // directive to read the seeded context; otherwise window 0 is a plain shell.
 // Idempotent: an existing worktree/session is reused, not clobbered.
 func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (string, error) {
-	if err := validSlug(spec.Slug); err != nil {
+	if err := validNewSlug(spec.Slug); err != nil {
 		return "", err
 	}
 	repo, err := repoName()
