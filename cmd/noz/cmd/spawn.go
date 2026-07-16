@@ -46,8 +46,11 @@ start it reading the seeded context immediately.
 			if parent != "" {
 				fmt.Fprintf(os.Stderr, "noz: parent = %s (noz close returns there)\n", parent)
 			}
-			fmt.Fprintf(os.Stderr, "noz: enter with `noz open %s`%s\n", args[0],
-				map[bool]string{true: "", false: " (agent staged, not started — pass --launch to start it)"}[launch])
+			if launch {
+				fmt.Fprintf(os.Stderr, "noz: enter with `noz open %s`\n", args[0])
+			} else {
+				fmt.Fprintf(os.Stderr, "noz: staged (no agent). Start it with `noz open %s --agent %s`\n", args[0], agentName)
+			}
 			return nil
 		},
 	}

@@ -216,6 +216,14 @@ func runOpenWorktree(slug, baseBranch, profile, agentName, task string, force bo
 		}
 	}
 
+	// A session with a seeded brief (a staged offshoot, or an earlier --task)
+	// should point its agent at that brief even on reuse — not just at creation.
+	if ctxRef == "" {
+		if _, err := os.Stat(briefPath(repo, slug)); err == nil {
+			ctxRef = briefRef(slug)
+		}
+	}
+
 	primary, err := agentPrimary(agentName, ctxRef)
 	if err != nil {
 		return err
@@ -343,6 +351,49 @@ func runOpenScratch(slug, agentName string) error {
 // primary is nil it's a plain shell left unnamed so tmux auto-renames it to
 // whatever's running — never the redundant session name. Extra profile
 // windows open alongside.
+// sessionHasAgent reports whether a coding agent is already running in any pane
+// of the session, so we don't double-start one when activating it.
+func sessionHasAgent(tmuxBin, name string) bool {
+	out, err := exec.Command(tmuxBin, "list-panes", "-s", "-t", name, "-F", "#{pane_current_command}").Output()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if agent.Detect(strings.TrimSpace(line)) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// activeWindowCmd returns the current foreground command of the session's
+// active window's pane, or "" if it can't be read.
+func activeWindowCmd(tmuxBin, name string) string {
+	out, err := exec.Command(tmuxBin, "display-message", "-p", "-t", name, "#{pane_current_command}").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// isShell reports whether cmd is an interactive shell — i.e. an idle window
+// safe to replace with an agent rather than a running command.
+func isShell(cmd string) bool {
+	switch cmd {
+	case "zsh", "bash", "sh", "fish", "dash", "tcsh", "ksh":
+		return true
+	}
+	return false
+}
+
+// primaryLabel is a human name for the window-0 command (the agent), for logs.
+func primaryLabel(primary *profileWindow) string {
+	if primary != nil && primary.Name != "" {
+		return primary.Name
+	}
+	return "agent"
+}
+
 func tmuxSession(name, dir string, primary *profileWindow, windows []profileWindow) error {
 	tmuxBin, err := exec.LookPath("tmux")
 	if err != nil {
@@ -361,8 +412,33 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 	if tmuxHasSession(name) {
 		// Tag on re-attach (backfills older sessions)
 		tagNozSession(tmuxBin, name, name, repo)
+
+		// Start the requested agent into the existing session if none is
+		// running yet — this is how a staged session (spawned without --launch)
+		// gets activated. respawn-window runs the agent as the window's own
+		// process (like creation does), avoiding the send-keys race with shell
+		// startup. Idempotent, and it won't clobber a window running real work.
+		started := false
+		if primary != nil && primary.Cmd != "" {
+			switch {
+			case sessionHasAgent(tmuxBin, name):
+				fmt.Fprintf(os.Stderr, "noz: an agent is already running in %s — leaving it\n", name)
+			case !isShell(activeWindowCmd(tmuxBin, name)):
+				fmt.Fprintf(os.Stderr, "noz: %s is running %q in its active window — not replacing it; start the agent yourself if you want it there\n", name, activeWindowCmd(tmuxBin, name))
+			default:
+				if err := exec.Command(tmuxBin, "respawn-window", "-k", "-t", name, primary.Cmd).Run(); err != nil {
+					fmt.Fprintf(os.Stderr, "noz: warning: could not start the agent in %s: %v\n", name, err)
+				} else {
+					fmt.Fprintf(os.Stderr, "noz: started %s in %s\n", primaryLabel(primary), name)
+					started = true
+				}
+			}
+		}
+
 		if noAttach {
-			fmt.Fprintf(os.Stderr, "noz: session %s exists (detached, not attaching)\n", name)
+			if !started {
+				fmt.Fprintf(os.Stderr, "noz: session %s exists (detached, not attaching)\n", name)
+			}
 			return nil
 		}
 		if insideTmux {

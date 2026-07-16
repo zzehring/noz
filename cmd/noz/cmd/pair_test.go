@@ -35,6 +35,19 @@ func TestValidNewSlug(t *testing.T) {
 	}
 }
 
+func TestIsShell(t *testing.T) {
+	for _, s := range []string{"zsh", "bash", "sh", "fish"} {
+		if !isShell(s) {
+			t.Errorf("isShell(%q) = false, want true", s)
+		}
+	}
+	for _, s := range []string{"claude", "node", "vim", "k9s", ""} {
+		if isShell(s) {
+			t.Errorf("isShell(%q) = true, want false", s)
+		}
+	}
+}
+
 func TestEncodeClaudeProject(t *testing.T) {
 	cases := map[string]string{
 		"/Users/user/worktrees/myrepo-feature-foo": "-Users-user-worktrees-myrepo-feature-foo",
