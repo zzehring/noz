@@ -107,7 +107,7 @@ func runMv(oldSlug, newSlug string) error {
 	// stale session name.
 	tmuxRenamed := false
 	if tmuxHasSession(oldSlug) {
-		if err := exec.Command("tmux", "rename-session", "-t", oldSlug, newSlug).Run(); err != nil {
+		if err := exec.Command("tmux", "rename-session", "-t", sessionTarget(oldSlug), newSlug).Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "noz: warning: could not rename tmux session: %v\n", err)
 		} else {
 			fmt.Fprintf(os.Stderr, "noz: renamed tmux session %s -> %s\n", oldSlug, newSlug)
@@ -124,7 +124,7 @@ func runMv(oldSlug, newSlug string) error {
 		if err != nil {
 			if err := os.Rename(oldDir, newDir); err != nil {
 				if tmuxRenamed {
-					exec.Command("tmux", "rename-session", "-t", newSlug, oldSlug).Run() // roll back
+					exec.Command("tmux", "rename-session", "-t", sessionTarget(newSlug), oldSlug).Run() // roll back
 				}
 				return fmt.Errorf("renaming directory: %w", err)
 			}

@@ -192,7 +192,7 @@ func mcpSwitch(ctx context.Context, req *mcp.CallToolRequest, in mcpSwitchInput)
 	if err != nil {
 		return nil, mcpSwitchOutput{Message: "tmux not found"}, nil
 	}
-	if err := exec.Command(tmuxBin, "switch-client", "-t", in.Slug).Run(); err != nil {
+	if err := exec.Command(tmuxBin, "switch-client", "-t", sessionTarget(in.Slug)).Run(); err != nil {
 		return nil, mcpSwitchOutput{Message: fmt.Sprintf("switch failed: %v", err)}, nil
 	}
 	return nil, mcpSwitchOutput{Switched: true, Message: "switched to " + in.Slug}, nil

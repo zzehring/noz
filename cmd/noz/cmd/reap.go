@@ -152,7 +152,7 @@ func readProcInfo() procInfo {
 // agentProcPID finds the PID of the agent process running in a session by
 // walking each pane's process tree for a command line mentioning the agent.
 func agentProcPID(tmuxBin, session, agentName string, pi procInfo) string {
-	out, err := exec.Command(tmuxBin, "list-panes", "-t", session, "-F", "#{pane_pid}").Output()
+	out, err := exec.Command(tmuxBin, "list-panes", "-t", sessionTarget(session), "-F", "#{pane_pid}").Output()
 	if err != nil {
 		return ""
 	}

@@ -135,7 +135,7 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 	}
 	tagNozSession(tmuxBin, spec.Slug, spec.Slug, repo)
 	if parent != "" {
-		exec.Command(tmuxBin, "set-environment", "-t", spec.Slug, "NOZ_PARENT", parent).Run()
+		exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(spec.Slug), "NOZ_PARENT", parent).Run()
 	}
 	return wtDir, nil
 }

@@ -134,7 +134,7 @@ func teardownSession(slug, wtDir, scratchDir, root string, force, keepWorktree, 
 	// never nuke an unrelated tmux session that happens to share the name.
 	if tmuxHasSession(slug) {
 		if isNozSession(slug) {
-			exec.Command("tmux", "kill-session", "-t", slug).Run()
+			exec.Command("tmux", "kill-session", "-t", sessionTarget(slug)).Run()
 			fmt.Fprintf(os.Stderr, "noz: killed tmux session %s\n", slug)
 			removed = true
 		} else {
@@ -181,5 +181,5 @@ func worktreeIsDirty(dir string) bool {
 }
 
 func tmuxHasSession(name string) bool {
-	return exec.Command("tmux", "has-session", "-t", name).Run() == nil
+	return exec.Command("tmux", "has-session", "-t", sessionTarget(name)).Run() == nil
 }

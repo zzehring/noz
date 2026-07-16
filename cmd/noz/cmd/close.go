@@ -128,7 +128,7 @@ func runClose(opts closeOptions) error {
 		target = lastTmuxSession()
 	}
 	if target != "" && target != slug && tmuxHasSession(target) {
-		exec.Command(tmuxBin, "switch-client", "-t", target).Run()
+		exec.Command(tmuxBin, "switch-client", "-t", sessionTarget(target)).Run()
 		msg := fmt.Sprintf("noz: closed %s → %s", slug, target)
 		if reportSaved {
 			msg += fmt.Sprintf(" (report: .noz/%s/reports/%s.md)", repo, slug)

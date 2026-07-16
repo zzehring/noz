@@ -138,10 +138,10 @@ func runRestore(cmd *cobra.Command, filter string) error {
 	}
 	if os.Getenv("TMUX") != "" {
 		// Already in tmux — switch the client to the target rather than nesting.
-		return exec.Command(tmuxBin, "switch-client", "-t", target).Run()
+		return exec.Command(tmuxBin, "switch-client", "-t", sessionTarget(target)).Run()
 	}
 	fmt.Fprintf(cmd.ErrOrStderr(), "noz: attaching to %s — 'noz open <slug>' to switch, 'noz back' to return, 'claude --continue' to resume an agent\n", target)
-	att := exec.Command(tmuxBin, "attach", "-t", target)
+	att := exec.Command(tmuxBin, "attach", "-t", sessionTarget(target))
 	att.Stdin, att.Stdout, att.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return att.Run()
 }

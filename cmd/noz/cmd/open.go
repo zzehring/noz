@@ -351,10 +351,20 @@ func runOpenScratch(slug, agentName string) error {
 // primary is nil it's a plain shell left unnamed so tmux auto-renames it to
 // whatever's running — never the redundant session name. Extra profile
 // windows open alongside.
+// sessionTarget formats a session name as an EXACT tmux target (leading "=").
+// tmux's default `-t` matching is exact -> prefix -> fnmatch, so a bare
+// `-t feature-b` prefix-matches (and can kill!) `feature-b-spike` when no exact
+// `feature-b` exists. Every noz command that looks a session up by name must use
+// this. (Go passes it to tmux via exec with no shell, so the leading "=" is not
+// subject to zsh's =-expansion.)
+func sessionTarget(name string) string {
+	return "=" + name
+}
+
 // sessionHasAgent reports whether a coding agent is already running in any pane
 // of the session, so we don't double-start one when activating it.
 func sessionHasAgent(tmuxBin, name string) bool {
-	out, err := exec.Command(tmuxBin, "list-panes", "-s", "-t", name, "-F", "#{pane_current_command}").Output()
+	out, err := exec.Command(tmuxBin, "list-panes", "-s", "-t", sessionTarget(name), "-F", "#{pane_current_command}").Output()
 	if err != nil {
 		return false
 	}
@@ -369,7 +379,7 @@ func sessionHasAgent(tmuxBin, name string) bool {
 // activeWindowCmd returns the current foreground command of the session's
 // active window's pane, or "" if it can't be read.
 func activeWindowCmd(tmuxBin, name string) string {
-	out, err := exec.Command(tmuxBin, "display-message", "-p", "-t", name, "#{pane_current_command}").Output()
+	out, err := exec.Command(tmuxBin, "display-message", "-p", "-t", sessionTarget(name), "#{pane_current_command}").Output()
 	if err != nil {
 		return ""
 	}
@@ -426,7 +436,7 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 			case !isShell(activeWindowCmd(tmuxBin, name)):
 				fmt.Fprintf(os.Stderr, "noz: %s is running %q in its active window — not replacing it; start the agent yourself if you want it there\n", name, activeWindowCmd(tmuxBin, name))
 			default:
-				if err := exec.Command(tmuxBin, "respawn-window", "-k", "-t", name, primary.Cmd).Run(); err != nil {
+				if err := exec.Command(tmuxBin, "respawn-window", "-k", "-t", sessionTarget(name), primary.Cmd).Run(); err != nil {
 					fmt.Fprintf(os.Stderr, "noz: warning: could not start the agent in %s: %v\n", name, err)
 				} else {
 					fmt.Fprintf(os.Stderr, "noz: started %s in %s\n", primaryLabel(primary), name)
@@ -443,9 +453,9 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 		}
 		if insideTmux {
 			fmt.Fprintf(os.Stderr, "noz: switching to %s\n", name)
-			return exec.Command(tmuxBin, "switch-client", "-t", name).Run()
+			return exec.Command(tmuxBin, "switch-client", "-t", sessionTarget(name)).Run()
 		}
-		cmd := exec.Command(tmuxBin, "attach", "-t", name)
+		cmd := exec.Command(tmuxBin, "attach", "-t", sessionTarget(name))
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -479,7 +489,7 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 	// where you came from instead of a guess.
 	if insideTmux {
 		if parent := currentTmuxSession(); parent != "" && parent != name {
-			exec.Command(tmuxBin, "set-environment", "-t", name, "NOZ_PARENT", parent).Run()
+			exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(name), "NOZ_PARENT", parent).Run()
 		}
 	}
 
@@ -492,10 +502,10 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 
 	if insideTmux {
 		fmt.Fprintf(os.Stderr, "noz: switching to %s\n", name)
-		return exec.Command(tmuxBin, "switch-client", "-t", name).Run()
+		return exec.Command(tmuxBin, "switch-client", "-t", sessionTarget(name)).Run()
 	}
 
-	cmd := exec.Command(tmuxBin, "attach", "-t", name)
+	cmd := exec.Command(tmuxBin, "attach", "-t", sessionTarget(name))
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -545,10 +555,10 @@ func openWindows(tmuxBin, dir, shellWindow string, windows []profileWindow) {
 
 // tagNozSession sets session-level env vars so we can identify noz sessions.
 func tagNozSession(tmuxBin, session, slug, repo string) {
-	if err := exec.Command(tmuxBin, "set-environment", "-t", session, "NOZ_SLUG", slug).Run(); err != nil {
+	if err := exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(session), "NOZ_SLUG", slug).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "noz: warning: could not tag session %s (NOZ_SLUG): %v\n", session, err)
 	}
-	if err := exec.Command(tmuxBin, "set-environment", "-t", session, "NOZ_REPO", repo).Run(); err != nil {
+	if err := exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(session), "NOZ_REPO", repo).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "noz: warning: could not tag session %s (NOZ_REPO): %v\n", session, err)
 	}
 }
@@ -737,7 +747,7 @@ func inGitRepo() bool {
 // isNozSession reports whether a live tmux session was created by noz (it
 // carries the NOZ_SLUG tag). Used to avoid acting on unrelated tmux sessions.
 func isNozSession(slug string) bool {
-	out, err := exec.Command("tmux", "show-environment", "-t", slug, "NOZ_SLUG").Output()
+	out, err := exec.Command("tmux", "show-environment", "-t", sessionTarget(slug), "NOZ_SLUG").Output()
 	if err != nil {
 		return false
 	}
@@ -748,7 +758,7 @@ func isNozSession(slug string) bool {
 // or "" if the session or variable doesn't exist (or is set but empty). Stateless
 // lineage/metadata (NOZ_PARENT) rides on these.
 func tmuxSessionEnv(slug, key string) string {
-	out, err := exec.Command("tmux", "show-environment", "-t", slug, key).Output()
+	out, err := exec.Command("tmux", "show-environment", "-t", sessionTarget(slug), key).Output()
 	if err != nil {
 		return ""
 	}
@@ -762,7 +772,7 @@ func tmuxSessionEnv(slug, key string) string {
 // whether such a session exists. repo is "" for a session that exists but
 // isn't noz-tagged.
 func liveSessionRepo(slug string) (repo string, live bool) {
-	out, err := exec.Command("tmux", "show-environment", "-t", slug, "NOZ_REPO").Output()
+	out, err := exec.Command("tmux", "show-environment", "-t", sessionTarget(slug), "NOZ_REPO").Output()
 	if err != nil {
 		return "", false // no such session
 	}
