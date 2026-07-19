@@ -377,13 +377,20 @@ func sessionHasAgent(tmuxBin, name string) bool {
 }
 
 // activeWindowCmd returns the current foreground command of the session's
-// active window's pane, or "" if it can't be read.
+// active pane, or "" if it can't be read. Uses list-panes rather than
+// display-message: display-message -t needs a client to anchor, so it returns
+// empty when noz runs outside tmux (e.g. `open --agent --detach` from a script).
 func activeWindowCmd(tmuxBin, name string) string {
-	out, err := exec.Command(tmuxBin, "display-message", "-p", "-t", sessionTarget(name), "#{pane_current_command}").Output()
+	out, err := exec.Command(tmuxBin, "list-panes", "-t", sessionTarget(name), "-F", "#{pane_active} #{pane_current_command}").Output()
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if cmd, ok := strings.CutPrefix(line, "1 "); ok {
+			return strings.TrimSpace(cmd)
+		}
+	}
+	return ""
 }
 
 // isShell reports whether cmd is an interactive shell — i.e. an idle window
