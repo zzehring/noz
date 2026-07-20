@@ -106,7 +106,7 @@ func setupMCP() error {
 	fmt.Fprintln(os.Stderr, "User scope (Claude Code) — run:")
 	fmt.Fprintln(os.Stderr, "  claude mcp add noz -- noz mcp")
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "Then reload your agent. Tools exposed: noz_sessions, noz_status, noz_switch, noz_back, noz_spawn, noz_rm, noz_close.")
+	fmt.Fprintln(os.Stderr, "Then reload your agent. Tools exposed: noz_sessions, noz_status, noz_peek, noz_switch, noz_back, noz_spawn, noz_rm, noz_close.")
 	return nil
 }
 

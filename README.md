@@ -256,7 +256,7 @@ claude mcp add noz -- noz mcp     # Claude Code user scope
 ```
 
 Tools:
-- **See** (read-only): `noz_sessions`, `noz_status`
+- **See** (read-only): `noz_sessions`, `noz_status`, `noz_peek`
 - **Navigate** (free): `noz_switch`, `noz_back`
 - **Act** (gated — you confirm): `noz_spawn`, `noz_rm`, `noz_close`
 
@@ -357,6 +357,7 @@ harmless; they vanish when you `noz rm` the session.
 | `noz ls [filter]` | Session dashboard (`-A` all repos, `--active`/`-a`, `--idle`/`-i`) |
 | `noz pick <repo\|children\|all>` | Resolve sessions for a view; backs the `choose-tree` picker (`--json`, `--filter`) |
 | `noz status` | Current session context (`--json` for a prompt segment) |
+| `noz peek <slug>` | Show another session's recent agent output without switching (`-n` lines) |
 | `noz path <slug>` | Print a session's worktree dir (`cd "$(noz path x)"`) |
 | `noz mv <old> <new>` | Rename a session across worktree + tmux + branch |
 | `noz close` | End the session you're in; hop to parent/last, then tear down (`--report`, `--merge`) |

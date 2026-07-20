@@ -25,6 +25,7 @@ Point your agent at it, e.g. Claude Code .mcp.json:
 Tools exposed:
   noz_sessions  list all discovered sessions
   noz_status    current session context
+  noz_peek      peek at another session's agent output (read-only)
   noz_switch    switch the tmux client to a named session
   noz_back      hop to the previous tmux session
   noz_spawn     create a task-scoped offshoot (gated: human approval required)
@@ -92,6 +93,15 @@ func runMCP(ctx context.Context) error {
 			"worktree is left untouched unless force=true (discards uncommitted changes). Set " +
 			"delete_branch=true to also drop each local branch (safe delete — keeps unmerged work).",
 	}, mcpRm)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "noz_peek",
+		Description: "Peek at another session's agent: capture the recent terminal output of a " +
+			"live session's active pane, so you can see what its agent is doing — or whether it's " +
+			"blocked waiting on a prompt — without switching to it. Read-only, free (no gate). " +
+			"Ideal for checking on offshoots you spawned. Pass `lines` for more/less scrollback " +
+			"(default 40).",
+	}, mcpPeek)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "noz_close",
@@ -169,6 +179,28 @@ func mcpStatus(ctx context.Context, req *mcp.CallToolRequest, in mcpEmptyInput) 
 	return nil, gatherStatus(), nil
 }
 
+type mcpPeekInput struct {
+	Slug  string `json:"slug" jsonschema:"the live session slug to peek at (see noz_sessions)"`
+	Lines int    `json:"lines,omitempty" jsonschema:"how many lines of recent output to capture (default 40)"`
+}
+
+type mcpPeekOutput struct {
+	Slug   string `json:"slug"`
+	Output string `json:"output"`
+}
+
+func mcpPeek(ctx context.Context, req *mcp.CallToolRequest, in mcpPeekInput) (*mcp.CallToolResult, mcpPeekOutput, error) {
+	n := in.Lines
+	if n == 0 {
+		n = 40
+	}
+	out, err := peekSession(in.Slug, n)
+	if err != nil {
+		return nil, mcpPeekOutput{Slug: in.Slug, Output: err.Error()}, nil
+	}
+	return nil, mcpPeekOutput{Slug: in.Slug, Output: out}, nil
+}
+
 type mcpSwitchInput struct {
 	Slug string `json:"slug" jsonschema:"the live session slug to switch the tmux client to (see noz_sessions)"`
 }
@@ -179,7 +211,7 @@ type mcpSwitchOutput struct {
 }
 
 func mcpSwitch(ctx context.Context, req *mcp.CallToolRequest, in mcpSwitchInput) (*mcp.CallToolResult, mcpSwitchOutput, error) {
-	if err := validNewSlug(in.Slug); err != nil {
+	if err := validSlug(in.Slug); err != nil {
 		return nil, mcpSwitchOutput{Message: err.Error()}, nil
 	}
 	if !tmuxHasSession(in.Slug) {
