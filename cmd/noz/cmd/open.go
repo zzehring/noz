@@ -568,6 +568,13 @@ func tagNozSession(tmuxBin, session, slug, repo string) {
 	if err := exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(session), "NOZ_REPO", repo).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "noz: warning: could not tag session %s (NOZ_REPO): %v\n", session, err)
 	}
+	// Defensively clear any stale global NOZ_* the server inherited from a shell
+	// that had them exported (starting tmux from inside a noz session leaks
+	// them). A polluted global otherwise shadows untagged sessions in the status
+	// bar and the picker with a wrong repo/slug.
+	for _, v := range []string{"NOZ_SLUG", "NOZ_REPO", "NOZ_PARENT"} {
+		exec.Command(tmuxBin, "set-environment", "-gu", v).Run()
+	}
 }
 
 // linkNozDir creates a persistent .noz dir for the repo and symlinks it

@@ -417,7 +417,9 @@ func nozTmuxSnippet(keys tmuxKeys) string {
 	b.WriteString("# Print-only: noz never edits this file. These keys are defaults —\n")
 	b.WriteString("# rebind freely (noz setup tmux --repo-key ... ) if they clash with your macros.\n")
 	b.WriteString("# Appends to status-right (-ga) so it won't replace your existing status bar.\n")
-	b.WriteString("set -ga status-right '#[fg=cyan]#{?NOZ_SLUG,#{NOZ_SLUG} ,}#[fg=yellow]#{?NOZ_REPO,#{NOZ_REPO} ,}#[default]'\n")
+	b.WriteString("# Shows the session's repo + offshoot parent (the slug is already the tmux\n")
+	b.WriteString("# session name, #S). Guarded, so it's blank for non-noz sessions.\n")
+	b.WriteString("set -ga status-right '#[fg=yellow]#{?NOZ_REPO,#{NOZ_REPO} ,}#[fg=magenta]#{?NOZ_PARENT,↳#{NOZ_PARENT} ,}#[default]'\n")
 
 	if keys.repo != "" || keys.all != "" || keys.children != "" {
 		b.WriteString("\n# Native session picker: tmux's own choose-tree (full-screen + preview),\n")
