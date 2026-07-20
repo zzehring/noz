@@ -65,9 +65,13 @@ you're sitting in. close gets you out safely first.
 }
 
 func runClose(opts closeOptions) error {
-	slug := currentTmuxSession()
+	// Resolve the session from cwd too, not just $TMUX — a detached/background
+	// process (an MCP server outside the pane) has no tmux client but its cwd
+	// still unambiguously identifies the worktree. The hop below is best-effort
+	// and teardown targets by name, so no tmux client is actually required.
+	slug := currentSession()
 	if slug == "" {
-		return fmt.Errorf("not in a tmux session — `noz close` ends the session you're in (use `noz rm <slug>` otherwise)")
+		return fmt.Errorf("can't tell which session to close — run this from inside a noz session's worktree, or use `noz rm <slug>`")
 	}
 	if !isNozSession(slug) {
 		return fmt.Errorf("%q isn't a noz-managed session — nothing for noz to close", slug)

@@ -619,6 +619,35 @@ func currentTmuxSession() string {
 	return strings.TrimSpace(string(out))
 }
 
+// currentSession resolves the noz session this process is "in". It prefers the
+// attached tmux client's session ($TMUX), but falls back to deriving it from the
+// current worktree (cwd) when there's no client — so it also works from a
+// detached/background process (e.g. an MCP server running outside the tmux
+// pane), which has a cwd but no $TMUX. Returns "" if neither resolves to a noz
+// worktree. Used by `noz close` and `noz status` so they self-target the same
+// way regardless of tmux attachment.
+func currentSession() string {
+	if s := currentTmuxSession(); s != "" {
+		return s
+	}
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		return ""
+	}
+	return sessionFromDir(strings.TrimSpace(string(out)), nozRoot())
+}
+
+// sessionFromDir returns the noz session slug for a worktree that is a direct
+// child of root (named "<repo>-<slug>"), or "" if dir isn't such a worktree —
+// so we never guess a session from an unrelated directory.
+func sessionFromDir(dir, root string) string {
+	if dir == "" || filepath.Clean(filepath.Dir(dir)) != filepath.Clean(root) {
+		return ""
+	}
+	_, slug := detectRepo(dir, filepath.Base(dir))
+	return slug
+}
+
 // lastTmuxSession returns the session this client was attached to just before
 // the current one. tmux tracks this per client, so noz keeps no state of its
 // own. Empty when not in tmux or there's no previous session.

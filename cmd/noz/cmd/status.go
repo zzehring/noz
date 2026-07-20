@@ -47,7 +47,7 @@ func gatherStatus() statusInfo {
 	cwd, _ := os.Getwd()
 	repo, _ := repoName()
 	branch := gitBranch()
-	slug := currentTmuxSession()
+	slug := currentSession()
 
 	info := statusInfo{Repo: repo, Branch: branch, Dir: cwd}
 	if slug != "" {
