@@ -23,6 +23,7 @@ go build ./cmd/noz      # build the binary
 go test ./...           # run the full test suite
 go vet ./...            # vet
 gofmt -l .              # must print nothing; CI fails on unformatted files
+golangci-lint run ./... # must be clean; CI runs this (config in .golangci.yml)
 go install ./cmd/noz    # install to $GOPATH/bin for manual testing
 ```
 
@@ -35,7 +36,7 @@ external deps.
 1. **Fork** the repo and clone your fork.
 2. Create a branch off `main`: `git checkout -b feat/your-thing`.
 3. Make your changes; add or update tests for any behavior change.
-4. Run `go test ./...`, `go vet ./...`, and `gofmt -l .` — all must be clean.
+4. Run `go test ./...`, `go vet ./...`, `gofmt -l .`, and `golangci-lint run ./...` — all must be clean.
 5. Push your branch to your fork and open a pull request against `main` here.
 6. Reference the issue in the PR description with `Fixes #NN`.
 

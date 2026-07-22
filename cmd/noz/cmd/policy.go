@@ -18,7 +18,7 @@ func newPolicyCmd() *cobra.Command {
 	}
 
 	policyCmd.PersistentFlags().StringVar(&policyName, "policy", "", "CEL policy name or path")
-	policyCmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
+	_ = policyCmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
 
 	policyCmd.AddCommand(newPolicyCheckCmd())
 	policyCmd.AddCommand(newPolicyValidateCmd())

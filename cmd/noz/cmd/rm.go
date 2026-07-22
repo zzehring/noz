@@ -113,7 +113,7 @@ func teardownSession(slug, wtDir, scratchDir, root string, force, keepWorktree, 
 		// orphaned once the session is gone (no cruft left in the brain).
 		if wtDir != "" {
 			if repo := strings.TrimSuffix(filepath.Base(wtDir), "-"+slug); repo != "" {
-				os.Remove(briefPath(repo, slug))
+				_ = os.Remove(briefPath(repo, slug))
 			}
 		}
 	}
@@ -134,7 +134,7 @@ func teardownSession(slug, wtDir, scratchDir, root string, force, keepWorktree, 
 	// never nuke an unrelated tmux session that happens to share the name.
 	if tmuxHasSession(slug) {
 		if isNozSession(slug) {
-			exec.Command("tmux", "kill-session", "-t", sessionTarget(slug)).Run()
+			_ = exec.Command("tmux", "kill-session", "-t", sessionTarget(slug)).Run()
 			fmt.Fprintf(os.Stderr, "noz: killed tmux session %s\n", slug)
 			removed = true
 		} else {

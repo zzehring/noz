@@ -52,7 +52,7 @@ Designed to be called from agent pre-execution hooks:
 	cmd.Flags().StringVar(&guardLog, "guard-log", "", "Path to append guard tower audit log")
 	cmd.Flags().StringVar(&policyName, "policy", "", "CEL policy name or path")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit JSON verdict (for Gemini/Codex hook format)")
-	cmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
+	_ = cmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
 
 	return cmd
 }
@@ -271,7 +271,7 @@ func writeGeminiResponse(decision, reason string) {
 	if reason != "" {
 		resp["reason"] = reason
 	}
-	json.NewEncoder(os.Stdout).Encode(resp)
+	_ = json.NewEncoder(os.Stdout).Encode(resp)
 }
 
 func logGuard(path, verdict, cmd, rule, reason string) {
@@ -286,7 +286,7 @@ func logGuard(path, verdict, cmd, rule, reason string) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	fmt.Fprintf(f, "%s %-6s %s (rule: %s)\n", time.Now().UTC().Format(time.RFC3339), verdict, cmd, rule)
 }

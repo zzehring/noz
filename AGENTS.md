@@ -22,11 +22,14 @@ go build ./cmd/noz        # build the CLI
 go test ./...             # run all tests
 go vet ./...
 gofmt -l .                # must print nothing (CI fails on unformatted files)
+golangci-lint run ./...   # must be clean (CI runs this; config in .golangci.yml)
 go install ./cmd/noz      # install to GOPATH/bin
 ```
 
 Standard `go` commands, no Makefile. The lifecycle tests shell out to `git` and
-`tmux`, so both must be installed to run the full suite.
+`tmux`, so both must be installed to run the full suite. CI runs
+`golangci-lint` too (see `.golangci.yml`), so run it locally before pushing —
+its default linter set (errcheck, staticcheck, …) catches what `go vet` won't.
 
 ## Architecture
 

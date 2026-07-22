@@ -124,7 +124,7 @@ func runMv(oldSlug, newSlug string) error {
 		if err != nil {
 			if err := os.Rename(oldDir, newDir); err != nil {
 				if tmuxRenamed {
-					exec.Command("tmux", "rename-session", "-t", sessionTarget(newSlug), oldSlug).Run() // roll back
+					_ = exec.Command("tmux", "rename-session", "-t", sessionTarget(newSlug), oldSlug).Run() // roll back
 				}
 				return fmt.Errorf("renaming directory: %w", err)
 			}

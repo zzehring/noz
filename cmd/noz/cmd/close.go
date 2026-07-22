@@ -132,21 +132,21 @@ func runClose(opts closeOptions) error {
 		target = lastTmuxSession()
 	}
 	if target != "" && target != slug && tmuxHasSession(target) {
-		exec.Command(tmuxBin, "switch-client", "-t", sessionTarget(target)).Run()
+		_ = exec.Command(tmuxBin, "switch-client", "-t", sessionTarget(target)).Run()
 		msg := fmt.Sprintf("noz: closed %s → %s", slug, target)
 		if reportSaved {
 			msg += fmt.Sprintf(" (report: .noz/%s/reports/%s.md)", repo, slug)
 		}
-		exec.Command(tmuxBin, "display-message", msg).Run()
+		_ = exec.Command(tmuxBin, "display-message", msg).Run()
 	} else {
-		exec.Command(tmuxBin, "detach-client", "-s", slug).Run()
+		_ = exec.Command(tmuxBin, "detach-client", "-s", slug).Run()
 	}
 
 	// Step out of the doomed worktree so git/filesystem ops stay valid.
 	if mainRepo != "" {
-		os.Chdir(mainRepo)
+		_ = os.Chdir(mainRepo)
 	} else {
-		os.Chdir(root)
+		_ = os.Chdir(root)
 	}
 
 	return teardownSession(slug, wtDir, scratchDir, root, opts.force, opts.keepWorktree, deleteBranch)

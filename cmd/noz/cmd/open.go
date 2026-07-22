@@ -49,7 +49,7 @@ Examples:
 			// --detach is the documented form of NOZ_NO_ATTACH: create the
 			// session but don't attach/switch. Reuses the existing detached path.
 			if detach {
-				os.Setenv("NOZ_NO_ATTACH", "1")
+				_ = os.Setenv("NOZ_NO_ATTACH", "1")
 			}
 
 			var slug string
@@ -85,9 +85,9 @@ Examples:
 	cmd.Flags().BoolVar(&noRepo, "no-repo", false, "force scratch directory (skip git worktree)")
 	cmd.Flags().IntVar(&depth, "depth", 1, "git fetch depth for PR reviews (0 = full history)")
 	cmd.Flags().StringVar(&profile, "profile", "", "apply a session profile (noz profile list to see available)")
-	cmd.RegisterFlagCompletionFunc("profile", completeProfiles)
+	_ = cmd.RegisterFlagCompletionFunc("profile", completeProfiles)
 	cmd.Flags().StringVar(&agentName, "agent", "", "open a coding agent in a window (claude, opencode, codex, gemini, pi)")
-	cmd.RegisterFlagCompletionFunc("agent", completeAgents)
+	_ = cmd.RegisterFlagCompletionFunc("agent", completeAgents)
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "proceed even if the slug is a live session in another repo")
 	cmd.Flags().BoolVarP(&detach, "detach", "d", false, "create the session but don't attach/switch to it")
 	cmd.Flags().StringVar(&task, "task", "", "seed a task brief for the session (new sessions only)")
@@ -496,7 +496,7 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 	// where you came from instead of a guess.
 	if insideTmux {
 		if parent := currentTmuxSession(); parent != "" && parent != name {
-			exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(name), "NOZ_PARENT", parent).Run()
+			_ = exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(name), "NOZ_PARENT", parent).Run()
 		}
 	}
 
@@ -556,7 +556,7 @@ func openWindows(tmuxBin, dir, shellWindow string, windows []profileWindow) {
 		}
 	}
 	if shellWindow != "" {
-		exec.Command(tmuxBin, "select-window", "-t", shellWindow).Run()
+		_ = exec.Command(tmuxBin, "select-window", "-t", shellWindow).Run()
 	}
 }
 
@@ -573,7 +573,7 @@ func tagNozSession(tmuxBin, session, slug, repo string) {
 	// them). A polluted global otherwise shadows untagged sessions in the status
 	// bar and the picker with a wrong repo/slug.
 	for _, v := range []string{"NOZ_SLUG", "NOZ_REPO", "NOZ_PARENT"} {
-		exec.Command(tmuxBin, "set-environment", "-gu", v).Run()
+		_ = exec.Command(tmuxBin, "set-environment", "-gu", v).Run()
 	}
 }
 
@@ -697,7 +697,7 @@ func resolveMainGitDir(wtDir string) string {
 }
 
 func addToExclude(path, pattern string) {
-	os.MkdirAll(filepath.Dir(path), 0755)
+	_ = os.MkdirAll(filepath.Dir(path), 0755)
 
 	if data, err := os.ReadFile(path); err == nil {
 		for line := range strings.SplitSeq(string(data), "\n") {
@@ -711,8 +711,8 @@ func addToExclude(path, pattern string) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
-	f.WriteString(pattern + "\n")
+	defer func() { _ = f.Close() }()
+	_, _ = f.WriteString(pattern + "\n")
 }
 
 // validSlug rejects names that could escape a directory or confuse tmux/git.
