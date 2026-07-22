@@ -9,7 +9,6 @@
 
 <a href="https://github.com/zzehring/noz/releases"><img src="https://img.shields.io/github/v/release/zzehring/noz?color=blue" alt="Latest release"></a>
 <a href="https://github.com/zzehring/noz/actions/workflows/ci.yml"><img src="https://github.com/zzehring/noz/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-<a href="https://goreportcard.com/report/github.com/zzehring/noz"><img src="https://goreportcard.com/badge/github.com/zzehring/noz" alt="Go Report Card"></a>
 <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/zzehring/noz" alt="Go version"></a>
 <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
 
