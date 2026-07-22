@@ -147,6 +147,60 @@ func completeAgents(cmd *cobra.Command, args []string, toComplete string) ([]str
 	return matches, cobra.ShellCompDirectiveNoFileComp
 }
 
+// nozOwnedEntries are the top-level directory entries noz itself creates in a
+// session directory (the .noz brain symlink and the .claude settings dir). A
+// directory holding only these — or nothing — is a leftover from an interrupted
+// or abnormal `noz open`, not a worktree with real content. .DS_Store gets a
+// pass since Finder scatters it and it's never meaningful.
+var nozOwnedEntries = map[string]bool{".noz": true, ".claude": true, ".DS_Store": true}
+
+// isNozLeftover reports whether dir contains only noz-owned crumbs (or is
+// empty), making it safe for noz to clear and recreate. It is only meaningful
+// for a directory that is NOT a git worktree — a real worktree checkout is full
+// of tracked files and would never qualify.
+func isNozLeftover(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if !nozOwnedEntries[e.Name()] {
+			return false
+		}
+	}
+	return true
+}
+
+// ensureWorktreeSlot prepares wtDir so a caller can create a worktree there. It
+// reports whether wtDir is already a valid worktree to reuse (reuse=true), or
+// has been cleared/never existed and is ready for creation (reuse=false).
+//
+// The failure this guards: `dirExists(wtDir)` alone can't tell a real worktree
+// from a plain directory left behind by an interrupted run. Reusing such a
+// leftover launches the agent in a bogus directory with no branch or checkout.
+// When the leftover is ours (only noz crumbs, inside the noz root), we remove it
+// and recreate so `open` self-heals; anything unexpected is an error, never a
+// silent delete.
+func ensureWorktreeSlot(root, wtDir string) (reuse bool, err error) {
+	if !dirExists(wtDir) {
+		return false, nil
+	}
+	if isWorktreeDir(wtDir) {
+		return true, nil
+	}
+	if !isWithinRoot(root, wtDir) {
+		return false, fmt.Errorf("%s exists but is not a git worktree, and sits outside the noz root — remove it yourself and retry", wtDir)
+	}
+	if !isNozLeftover(wtDir) {
+		return false, fmt.Errorf("%s exists but is not a git worktree and holds unexpected files — remove it yourself and retry", wtDir)
+	}
+	fmt.Fprintf(os.Stderr, "noz: %s is a leftover (not a git worktree) — clearing and recreating\n", wtDir)
+	if err := os.RemoveAll(wtDir); err != nil {
+		return false, fmt.Errorf("clearing leftover dir: %w", err)
+	}
+	return false, nil
+}
+
 func runOpenWorktree(slug, baseBranch, profile, agentName, task string, force bool) error {
 	repo, err := repoName()
 	if err != nil {
@@ -166,8 +220,12 @@ func runOpenWorktree(slug, baseBranch, profile, agentName, task string, force bo
 		return fmt.Errorf("creating root dir: %w", err)
 	}
 
+	reuse, err := ensureWorktreeSlot(root, wtDir)
+	if err != nil {
+		return err
+	}
 	created := false
-	if dirExists(wtDir) {
+	if reuse {
 		fmt.Fprintf(os.Stderr, "noz: worktree exists at %s, reusing\n", wtDir)
 	} else {
 		var args []string
@@ -270,9 +328,13 @@ func runOpenPR(prNumber string, depth int, profile, agentName string, force bool
 		return fmt.Errorf("creating root dir: %w", err)
 	}
 
+	reuse, err := ensureWorktreeSlot(root, wtDir)
+	if err != nil {
+		return err
+	}
 	var windows []profileWindow
 	var ctxRef string
-	if dirExists(wtDir) {
+	if reuse {
 		fmt.Fprintf(os.Stderr, "noz: worktree exists at %s, reusing\n", wtDir)
 	} else {
 		fetchArgs := []string{"fetch"}
