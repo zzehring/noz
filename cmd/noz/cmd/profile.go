@@ -511,7 +511,7 @@ func grantBrainAccess(wtDir, repo, agentName string) {
 	if err != nil {
 		return
 	}
-	os.WriteFile(path, append(data, '\n'), 0644)
+	_ = os.WriteFile(path, append(data, '\n'), 0644) // best-effort — the agent will just prompt
 
 	// Keep it out of git so noz never dirties the tree. settings.local.json is
 	// Claude's own gitignore convention, but don't assume the repo set it up.

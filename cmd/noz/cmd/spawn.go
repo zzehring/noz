@@ -58,7 +58,7 @@ start it reading the seeded context immediately.
 	cmd.Flags().StringVar(&task, "task", "", "what this offshoot should work on (seeds its brief)")
 	cmd.Flags().StringVar(&source, "source", "", "base branch to start from (default: current HEAD)")
 	cmd.Flags().StringVar(&agentName, "agent", "claude", "agent to launch with --launch")
-	cmd.RegisterFlagCompletionFunc("agent", completeAgents)
+	_ = cmd.RegisterFlagCompletionFunc("agent", completeAgents)
 	cmd.Flags().BoolVar(&launch, "launch", false, "start the agent immediately, reading the seeded brief")
 
 	return cmd
@@ -135,7 +135,7 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 	}
 	tagNozSession(tmuxBin, spec.Slug, spec.Slug, repo)
 	if parent != "" {
-		exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(spec.Slug), "NOZ_PARENT", parent).Run()
+		_ = exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(spec.Slug), "NOZ_PARENT", parent).Run()
 	}
 	return wtDir, nil
 }

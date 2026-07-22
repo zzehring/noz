@@ -266,7 +266,7 @@ func mcpSpawn(ctx context.Context, req *mcp.CallToolRequest, in mcpSpawnInput) (
 	out := mcpSpawnOutput{Parent: parent}
 	created, failed := 0, 0
 	for _, s := range in.Sessions {
-		dir, err := spawnOffshoot(spawnSpec{Slug: s.Slug, Task: s.Task, Source: s.Source}, parent, agentName, in.Launch)
+		dir, err := spawnOffshoot(spawnSpec(s), parent, agentName, in.Launch)
 		r := mcpSpawnResult{Slug: s.Slug, Dir: dir}
 		if err != nil {
 			r.Error = err.Error()

@@ -210,7 +210,7 @@ func removeSessionDir(path, name string) error {
 	}
 
 	if tmuxHasSession(slug) && isNozSession(slug) {
-		exec.Command("tmux", "kill-session", "-t", sessionTarget(slug)).Run()
+		_ = exec.Command("tmux", "kill-session", "-t", sessionTarget(slug)).Run()
 	}
 
 	return nil

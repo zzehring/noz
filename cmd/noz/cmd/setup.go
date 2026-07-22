@@ -67,7 +67,7 @@ Examples:
 	cmd.Flags().StringVar(&keys.repo, "repo-key", "g", "tmux: prefix key for the repo-local picker (\"\" to omit)")
 	cmd.Flags().StringVar(&keys.all, "all-key", "G", "tmux: prefix key for the all-sessions picker (\"\" to omit)")
 	cmd.Flags().StringVar(&keys.children, "children-key", "C-g", "tmux: prefix key for the children picker (\"\" to omit)")
-	cmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
+	_ = cmd.RegisterFlagCompletionFunc("policy", completePolicyNames)
 
 	return cmd
 }
@@ -362,9 +362,9 @@ func writeJSONFile(path string, data map[string]any) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName) // no-op once the rename succeeds
+	defer func() { _ = os.Remove(tmpName) }() // no-op once the rename succeeds
 	if _, err := tmp.Write(out); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {

@@ -97,7 +97,9 @@ func TestWriteJSONFileAtomicAndBackup(t *testing.T) {
 		t.Fatalf("backup not written: %v", err)
 	}
 	var bakGot map[string]any
-	json.Unmarshal(bak, &bakGot)
+	if err := json.Unmarshal(bak, &bakGot); err != nil {
+		t.Fatalf("backup is not valid JSON: %v", err)
+	}
 	if bakGot["v"] != "1" {
 		t.Fatalf("backup should hold v=1, got %v", bakGot["v"])
 	}

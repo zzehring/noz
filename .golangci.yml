@@ -1,0 +1,17 @@
+# golangci-lint config, pinned in-repo so `golangci-lint run` locally matches CI
+# (see .github/workflows/ci.yml). Keeps the v2 default linter set (errcheck,
+# govet, ineffassign, staticcheck, unused).
+version: "2"
+
+linters:
+  settings:
+    errcheck:
+      # Writes to stdout/stderr never fail in a way we can act on, so we don't
+      # litter `_, _ =` across every print. Deliberate fire-and-forget program
+      # calls (best-effort tmux, os.Chdir, os.MkdirAll in void helpers) stay
+      # explicit `_ =` at the call site instead — so a *real* unchecked mkdir
+      # elsewhere still gets flagged.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
