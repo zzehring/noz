@@ -3,7 +3,7 @@ module github.com/zzehring/noz
 go 1.25.0
 
 require (
-	github.com/google/cel-go v0.29.2
+	github.com/google/cel-go v0.30.0
 	github.com/modelcontextprotocol/go-sdk v1.6.1
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.47.0
