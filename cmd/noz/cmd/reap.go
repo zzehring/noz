@@ -92,8 +92,27 @@ func runReap(cmd *cobra.Command, filter, idleStr string, force bool) error {
 		if mib > 0 {
 			memStr = fmt.Sprintf("~%dMiB", mib)
 		}
-		fmt.Fprintf(w, "  %s %-40s %s%s idle %s, %s%s\n",
-			action, s.slug, cGray, s.agent, relativeTime(s.lastActive), memStr, cReset)
+
+		// Repo + task give the "is this one safe to kill?" context you'd
+		// otherwise have to go dig out of `noz ls`.
+		repoStr := ""
+		if s.repo != "" {
+			repoStr = fmt.Sprintf("  %s%s%s", cGray, s.repo, cReset)
+		}
+		taskStr := ""
+		if s.task != "" {
+			t := s.task
+			if runes := []rune(t); len(runes) > 40 {
+				t = string(runes[:39]) + "…"
+			}
+			taskStr = fmt.Sprintf("  %s%s%s", cDim, t, cReset)
+		}
+
+		fmt.Fprintf(w, "  %s %-40s %s%8s%s  %s%s idle %s%s%s%s\n",
+			action, s.slug,
+			cYellow, memStr, cReset,
+			cGray, s.agent, relativeTime(s.lastActive), cReset,
+			repoStr, taskStr)
 
 		if force {
 			if err := exec.Command("kill", "-TERM", pid).Run(); err != nil {

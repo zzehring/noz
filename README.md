@@ -281,6 +281,29 @@ re-entering the session. `noz close --merge` fast-forwards the branch into your
 main checkout on the way out (local; PR merges stay manual and gated by your
 forge).
 
+### What `close` removes — and what it leaves
+
+A bare `noz close` (or `noz rm <slug>`) removes the session's **worktree**, its
+**context file** in the brain, and the **tmux session** — and since killing the
+tmux session takes every pane's processes with it, your agent, editor, and any
+language servers all go down too (no separate `noz reap` needed at teardown).
+
+What it deliberately leaves behind:
+
+- **The local branch.** Not deleted unless you pass `--delete-branch` (or
+  `--merge`, which implies it). And `--delete-branch` uses git's *safe* `-d`, so
+  a branch with unmerged commits is kept, not dropped — noz never silently
+  discards work. Fold it in with `--merge` first, or `git branch -D <slug>`
+  yourself once you're sure.
+- **Any `--report`** you wrote — it lives on at `.noz/<repo>/reports/<slug>.md`
+  as the up-channel to the parent; `close` never auto-deletes it.
+- **The remote branch**, if you ever pushed. `close` is entirely local and never
+  touches your forge.
+
+So the fullest local cleanup is `noz close --merge` (mergeable work) or
+`noz close --delete-branch -f` (throwaway, dirty worktree discarded). The remote
+branch and any report outlive both, by design.
+
 ## Observability (opt-in)
 
 `noz metrics` emits your session landscape as Prometheus text — counts by
@@ -380,5 +403,7 @@ harmless; they vanish when you `noz rm` the session.
 - [x] Agentic offshoots — `spawn` task-scoped sessions, `NOZ_PARENT` lineage, `close` to return
 - [x] Report-back on close — offshoots stream context to the brain (`close --report`); local `close --merge`
 - [ ] Observability — surface `report ✓` + live "what's the agent doing right now" in `noz ls` / `noz top` (built on the gate)
+- [ ] Ranked reap candidates — `noz reap` measures footprint per session but prints in discovery order; collect all idle candidates, sort by `phys_footprint` (resident + compressed, so swap counts) descending, and surface biggest-first with `--top N` / `--min-mem` so the dry-run reads as "biggest reclaimable wins"
+- [ ] Reap hungry helpers, not just the agent — `noz reap` only SIGTERMs the agent PID; an idle session's language servers (`gopls`, `rust-analyzer`, `tsserver`) often hold more memory. Add an allowlist of stateless, respawnable helpers reap can reclaim too (opt-in flag). Never the editor itself — neovim has unsaved buffer state, so killing it on a memory heuristic breaks safe-by-construction; only target processes that respawn cleanly with no data loss
 - [ ] Isolation providers (v2) — run agents in microVMs ([`grafana/umm`](https://github.com/grafana/umm))
       for hard memory caps + isolation; `noz` stays the orchestrator
