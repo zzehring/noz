@@ -21,10 +21,30 @@ type tmuxKeys struct {
 	children string // native picker, offshoots of this session
 }
 
+// pickerBindings pairs each configured key with the pick view it opens, in a
+// stable order, skipping any key the user dropped with --<name>-key "". Shared
+// by the snippet generator and --check so the two can never disagree about
+// which bindings are meant to exist.
+func pickerBindings(keys tmuxKeys) []struct{ key, view string } {
+	all := []struct{ key, view string }{
+		{keys.repo, viewRepo},
+		{keys.all, viewAll},
+		{keys.children, viewChildren},
+	}
+	out := make([]struct{ key, view string }, 0, len(all))
+	for _, b := range all {
+		if b.key != "" {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
 func newSetupCmd() *cobra.Command {
 	var remove bool
 	var projectOnly bool
 	var dryRun bool
+	var check bool
 	var keys tmuxKeys
 
 	cmd := &cobra.Command{
@@ -43,8 +63,13 @@ The tmux snippet is print-only — noz never edits ~/.tmux.conf. The picker keys
 are defaults; pass --*-key to pick others if they clash with your macros (set a
 key to "" to drop that binding):
 
+--check verifies the snippet is actually live in the running tmux server
+(sourced, bound, not clobbered, noz reachable) and exits non-zero if not. It
+inspects a running server, so it can't vouch for a config that was never loaded.
+
 Examples:
   noz setup tmux                               # print tmux snippet (g/G/C-g)
+  noz setup tmux --check                       # is the integration actually live?
   noz setup tmux --repo-key C-s --all-key C-a  # rebind the picker keys
   noz setup tmux --children-key ""             # drop the children binding
   noz setup claude --policy readonly           # global gate hooks
@@ -56,13 +81,14 @@ Examples:
 			if len(args) > 0 {
 				agentName = args[0]
 			}
-			return runSetup(agentName, remove, projectOnly, dryRun, keys)
+			return runSetup(cmd, agentName, remove, projectOnly, dryRun, check, keys)
 		},
 	}
 
 	cmd.Flags().BoolVar(&remove, "remove", false, "Remove noz hooks from agent config")
 	cmd.Flags().BoolVar(&projectOnly, "project-only", false, "Only configure for current project (.claude/settings.json)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview changes without writing")
+	cmd.Flags().BoolVar(&check, "check", false, "tmux: verify the integration is live in the running server (exits non-zero on failure)")
 	cmd.Flags().StringVar(&policyName, "policy", "", "CEL policy name or path")
 	cmd.Flags().StringVar(&keys.repo, "repo-key", "g", "tmux: prefix key for the repo-local picker (\"\" to omit)")
 	cmd.Flags().StringVar(&keys.all, "all-key", "G", "tmux: prefix key for the all-sessions picker (\"\" to omit)")
@@ -72,9 +98,12 @@ Examples:
 	return cmd
 }
 
-func runSetup(agentName string, remove, projectOnly, dryRun bool, keys tmuxKeys) error {
+func runSetup(cmd *cobra.Command, agentName string, remove, projectOnly, dryRun, check bool, keys tmuxKeys) error {
 	if agentName == "tmux" {
-		return setupTmux(remove, keys)
+		return setupTmux(cmd, remove, check, keys)
+	}
+	if check {
+		return fmt.Errorf("--check is only supported for `noz setup tmux`")
 	}
 	if agentName == "mcp" {
 		return setupMCP()
@@ -436,14 +465,7 @@ func nozTmuxSnippet(keys tmuxKeys) string {
 			fmt.Fprintf(&b, "#   prefix+%-3s offshoots spawned from THIS session\n", keys.children)
 		}
 	}
-	for _, bind := range []struct{ key, view string }{
-		{keys.repo, "repo"},
-		{keys.all, "all"},
-		{keys.children, "children"},
-	} {
-		if bind.key == "" {
-			continue
-		}
+	for _, bind := range pickerBindings(keys) {
 		// run-shell (synchronous) stashes the resolved filter, then choose-tree
 		// runs natively in the client and double-expands it via #{E:}.
 		fmt.Fprintf(&b, "bind-key %s run-shell \"tmux set-option -g @noz_pick \\\"\\$(noz pick %s --filter)\\\"\" \\; choose-tree -Zs -f \"#{E:#{@noz_pick}}\"\n", bind.key, bind.view)
@@ -451,18 +473,55 @@ func nozTmuxSnippet(keys tmuxKeys) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func setupTmux(remove bool, keys tmuxKeys) error {
+func setupTmux(cmd *cobra.Command, remove, check bool, keys tmuxKeys) error {
+	if check {
+		w := cmd.OutOrStdout()
+		fmt.Fprintln(w, "noz: tmux integration check")
+		fmt.Fprintln(w)
+		// A failing check is a report result, not a usage error: exit non-zero
+		// (so it can gate a script) without cobra prefixing "Error:" on top of
+		// the summary main() already prints.
+		cmd.SilenceErrors = true
+		return reportTmuxCheck(w, checkTmux(probeTmux(), keys))
+	}
+
 	if remove {
 		fmt.Fprintln(os.Stderr, "noz: `noz setup tmux` doesn't edit your config — nothing to remove.")
 		fmt.Fprintln(os.Stderr, "noz: if you added the snippet to ~/.tmux.conf, delete those lines by hand.")
+		fmt.Fprintln(os.Stderr, "noz: `noz setup tmux --check` shows which parts are still live.")
 		return nil
 	}
+
+	// Detect and adapt rather than impose (PRINCIPLES #4): if a server is up,
+	// say which default keys are already taken instead of leaving the user to
+	// discover the clash after pasting.
+	warnTmuxKeyCollisions(keys)
 
 	fmt.Fprintln(os.Stderr, "noz: add the following to your ~/.tmux.conf, then reload it")
 	fmt.Fprintln(os.Stderr, "noz: (prefix + : then `source-file ~/.tmux.conf`):")
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stdout, nozTmuxSnippet(keys))
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "noz: then verify it took effect: noz setup tmux --check")
 	return nil
+}
+
+// warnTmuxKeyCollisions flags any picker key already bound to a non-noz command
+// in the live server. Best-effort and advisory: with no server running there is
+// nothing to check, and noz prints the snippet either way.
+func warnTmuxKeyCollisions(keys tmuxKeys) {
+	p := probeTmux()
+	if !p.serverUp {
+		return
+	}
+	for _, b := range pickerBindings(keys) {
+		bound, ok := p.binds[b.key]
+		if !ok || strings.Contains(bound, "noz pick "+b.view) {
+			continue
+		}
+		fmt.Fprintf(os.Stderr, "noz: warning — prefix+%s is already bound to: %s\n", b.key, clipStr(bound, 44))
+		fmt.Fprintf(os.Stderr, "noz:   pasting this will override it; keep yours with --%s-key <key>\n", b.view)
+	}
 }
 
 // isNozHook checks if a PreToolUse entry is a noz hook.
