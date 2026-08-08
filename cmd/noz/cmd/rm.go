@@ -58,6 +58,9 @@ func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 		return err
 	}
 
+	root := nozRoot()
+	slug = canonicalSlug(slug, root)
+
 	// Don't saw off the branch you're sitting on: refuse to remove the session
 	// you're currently inside (killing it would yank you out, and its worktree
 	// may be your CWD). Use `noz close` (it hops you away first), or run this
@@ -66,9 +69,38 @@ func runRm(slug string, force, keepWorktree, deleteBranch bool) error {
 		return fmt.Errorf("you're in %q — use `noz close` to end it, or run `noz rm %s` from another session", slug, slug)
 	}
 
-	root := nozRoot()
 	wtDir, scratchDir := sessionDirs(slug, root)
 	return teardownSession(slug, wtDir, scratchDir, root, force, keepWorktree, deleteBranch)
+}
+
+// canonicalSlug normalizes a user-supplied session name. A no-repo workspace
+// lives on disk at "scratch-<slug>" but its real identity — worktree lookup key
+// and tmux session name — is the bare <slug>. Users (and older `noz ls` output)
+// sometimes type the directory name with its "scratch-" prefix; if that literal
+// name resolves to nothing but the stripped form is a real session, use the
+// stripped form. The literal always wins when it exists, so a genuine session
+// whose slug legitimately starts with "scratch-" is never misresolved.
+func canonicalSlug(slug, root string) string {
+	if sessionExists(slug, root) {
+		return slug
+	}
+	if stripped := strings.TrimPrefix(slug, "scratch-"); stripped != slug && sessionExists(stripped, root) {
+		return stripped
+	}
+	return slug
+}
+
+// sessionExists reports whether slug names a live noz session: a repo worktree,
+// a scratch workspace directory, or a tmux session.
+func sessionExists(slug, root string) bool {
+	wtDir, scratchDir := sessionDirs(slug, root)
+	if wtDir != "" && dirExists(wtDir) {
+		return true
+	}
+	if dirExists(scratchDir) {
+		return true
+	}
+	return tmuxHasSession(slug)
 }
 
 // sessionDirs resolves a session's worktree and scratch directories from the
