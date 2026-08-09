@@ -59,7 +59,7 @@ func runMv(oldSlug, newSlug string) error {
 
 	// Try repo-prefixed dir first (worktree)
 	if inGitRepo() {
-		if r, err := repoName(); err == nil {
+		if r, err := repoDirName(); err == nil {
 			candidate := filepath.Join(root, r+"-"+oldSlug)
 			if dirExists(candidate) {
 				repo = r
@@ -76,9 +76,9 @@ func runMv(oldSlug, newSlug string) error {
 				if !e.IsDir() {
 					continue
 				}
-				_, slug := detectRepo(filepath.Join(root, e.Name()), e.Name())
+				_, _, slug := detectRepo(filepath.Join(root, e.Name()), e.Name())
 				if slug == oldSlug {
-					detectedRepo, _ := detectRepo(filepath.Join(root, e.Name()), e.Name())
+					detectedRepo, _, _ := detectRepo(filepath.Join(root, e.Name()), e.Name())
 					repo = detectedRepo
 					oldDir = filepath.Join(root, e.Name())
 					break

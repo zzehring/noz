@@ -107,7 +107,7 @@ func sessionExists(slug, root string) bool {
 // current repo context. wtDir is empty when not in a git repo.
 func sessionDirs(slug, root string) (wtDir, scratchDir string) {
 	if inGitRepo() {
-		if repo, err := repoName(); err == nil {
+		if repo, err := repoDirName(); err == nil {
 			wtDir = filepath.Join(root, repo+"-"+slug)
 		}
 	}

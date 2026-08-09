@@ -73,10 +73,11 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 	if err := validNewSlug(spec.Slug); err != nil {
 		return "", err
 	}
-	repo, err := repoName()
+	repo, err := repoDirName()
 	if err != nil {
 		return "", err
 	}
+	identity, _ := repoIdentity()
 	root := nozRoot()
 	wtDir := filepath.Join(root, repo+"-"+spec.Slug)
 	if err := os.MkdirAll(root, 0755); err != nil {
@@ -129,11 +130,11 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 		createArgs = append(createArgs, "-n", a.Name, shellJoin(a.LaunchWith(directive)))
 	}
 	c := exec.Command(tmuxBin, createArgs...)
-	c.Env = append(os.Environ(), "NOZ_SLUG="+spec.Slug, "NOZ_REPO="+repo)
+	c.Env = append(os.Environ(), "NOZ_SLUG="+spec.Slug, "NOZ_REPO="+identity)
 	if err := c.Run(); err != nil {
 		return "", fmt.Errorf("creating session: %w", err)
 	}
-	tagNozSession(tmuxBin, spec.Slug, spec.Slug, repo)
+	tagNozSession(tmuxBin, spec.Slug, spec.Slug, identity)
 	if parent != "" {
 		_ = exec.Command(tmuxBin, "set-environment", "-t", sessionTarget(spec.Slug), "NOZ_PARENT", parent).Run()
 	}

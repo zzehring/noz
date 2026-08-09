@@ -202,13 +202,16 @@ func ensureWorktreeSlot(root, wtDir string) (reuse bool, err error) {
 }
 
 func runOpenWorktree(slug, baseBranch, profile, agentName, task string, force bool) error {
-	repo, err := repoName()
+	repo, err := repoDirName()
 	if err != nil {
 		return err
 	}
+	identity, _ := repoIdentity()
 
 	if !force {
-		if other, live := liveSessionRepo(slug); live && other != "" && other != repo {
+		// Compare identities, not directory names: the tag is an identity, and
+		// a pre-#13 session carries the bare basename (repoTagMatches).
+		if other, live := liveSessionRepo(slug); live && other != "" && !repoTagMatches(other, identity) {
 			return fmt.Errorf("slug %q is already a live session in repo %q — pick a different slug, or use --force", slug, other)
 		}
 	}
@@ -299,17 +302,18 @@ func runOpenPR(prNumber string, depth int, profile, agentName string, force bool
 		return fmt.Errorf("gh CLI not found (needed for --pr)")
 	}
 
-	repo, err := repoName()
+	repo, err := repoDirName()
 	if err != nil {
 		return err
 	}
+	identity, _ := repoIdentity()
 
 	slug := "review-" + prNumber
 	if err := validNewSlug(slug); err != nil {
 		return err
 	}
 	if !force {
-		if other, live := liveSessionRepo(slug); live && other != "" && other != repo {
+		if other, live := liveSessionRepo(slug); live && other != "" && !repoTagMatches(other, identity) {
 			return fmt.Errorf("slug %q is already a live session in repo %q — use --force", slug, other)
 		}
 	}
@@ -479,9 +483,10 @@ func tmuxSession(name, dir string, primary *profileWindow, windows []profileWind
 		return fmt.Errorf("tmux not found")
 	}
 
-	// Detect repo for the env var
+	// NOZ_REPO carries the repo's *identity* (org/repo), which is what the
+	// picker and status bar scope on — not the directory name.
 	repo := ""
-	if r, err := repoName(); err == nil {
+	if r, err := repoIdentity(); err == nil {
 		repo = r
 	}
 
@@ -858,21 +863,17 @@ func liveSessionRepo(slug string) (repo string, live bool) {
 	return "", true // session exists but untagged ("-NOZ_REPO")
 }
 
-func repoName() (string, error) {
-	out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
+// repoDirName is the repo's *directory* name — the basename of the main
+// checkout. It composes worktree paths ("<repo>-<slug>") and brain paths
+// (".noz/<repo>/…"), both of which are load-bearing on disk, so it must stay
+// the basename. For the repo's identity (tag, picker, status bar) use
+// repoIdentity; see the note above mainRepoDir in git.go.
+func repoDirName() (string, error) {
+	dir := mainRepoDir()
+	if dir == "" {
 		return "", fmt.Errorf("not in a git repo")
 	}
-	topLevel := strings.TrimSpace(string(out))
-
-	// If we're in a worktree, resolve the main repo name from its .git file.
-	if data, err := os.ReadFile(filepath.Join(topLevel, ".git")); err == nil {
-		if base := worktreeMainRepo(string(data)); base != "" {
-			return filepath.Base(base), nil
-		}
-	}
-
-	return filepath.Base(topLevel), nil
+	return filepath.Base(dir), nil
 }
 
 func runGit(args ...string) error {

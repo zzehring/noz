@@ -39,7 +39,7 @@ func TestDetectRepoStripsScratchPrefix(t *testing.T) {
 	}
 	for name, want := range cases {
 		// Use a path with no real .git, so detectRepo takes the no-repo path.
-		repo, slug := detectRepo("/nonexistent/"+name, name)
+		repo, _, slug := detectRepo("/nonexistent/"+name, name)
 		if repo != "" {
 			t.Errorf("detectRepo(%q): repo = %q, want \"\"", name, repo)
 		}

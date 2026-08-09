@@ -16,8 +16,13 @@ import (
 )
 
 type sessionInfo struct {
-	slug       string
-	repo       string
+	slug string
+	// repo is the directory name — it composes the brain path
+	// (".noz/<repo>/…"), so it must stay the basename.
+	repo string
+	// identity is the repo's identity ("org/repo" from origin, else the
+	// basename). Scoping, the picker, and display use this; paths never do.
+	identity   string
 	dir        string
 	category   string
 	hasTmux    bool
@@ -93,11 +98,11 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 
 	// Default: scope to current repo if in one (unless -A)
 	if !all && inGitRepo() {
-		repo, err := repoName()
+		identity, err := repoIdentity()
 		if err == nil {
 			var scoped []sessionInfo
 			for _, s := range sessions {
-				if s.repo == repo {
+				if s.identity == identity {
 					scoped = append(scoped, s)
 				}
 			}
@@ -239,8 +244,8 @@ func renderSession(w io.Writer, s sessionInfo, slugWidth int, showRepo bool, cur
 	}
 
 	repoStr := ""
-	if showRepo && s.repo != "" {
-		repoStr = fmt.Sprintf("  %s%s%s", cGray, s.repo, cReset)
+	if showRepo && s.identity != "" {
+		repoStr = fmt.Sprintf("  %s%s%s", cGray, s.identity, cReset)
 	}
 
 	hereStr := ""
@@ -319,18 +324,21 @@ func discoverSessions() ([]sessionInfo, error) {
 			continue
 		}
 		dir := filepath.Join(root, name)
-		repo, slug := detectRepo(dir, name)
+		repo, identity, slug := detectRepo(dir, name)
 
 		s := sessionInfo{
-			slug: slug,
-			repo: repo,
-			dir:  dir,
+			slug:     slug,
+			repo:     repo,
+			identity: identity,
+			dir:      dir,
 		}
 
 		// Match a live session to this worktree only when its NOZ_REPO tag
 		// agrees (or is absent) — so a same-slug session in another repo
-		// doesn't get claimed by both worktrees.
-		if td, ok := tmux[slug]; ok && (td.repo == "" || td.repo == repo) {
+		// doesn't get claimed by both worktrees. repoTagMatches also accepts
+		// the bare basename a pre-#13 session carries, so sessions running
+		// across the upgrade keep matching instead of reporting as idle.
+		if td, ok := tmux[slug]; ok && repoTagMatches(td.repo, identity) {
 			s.hasTmux = true
 			s.windows = td.windows
 			s.lastActive = td.lastActive
@@ -351,8 +359,11 @@ func discoverSessions() ([]sessionInfo, error) {
 	return sessions, nil
 }
 
-// detectRepo reads the .git file in a worktree dir to find the parent repo.
-func detectRepo(dir, name string) (repo, slug string) {
+// detectRepo reads the .git file in a worktree dir to find the parent repo,
+// returning both its directory name (which composes brain paths) and its
+// identity (which scopes and displays). See the note in git.go for why these
+// are two different things.
+func detectRepo(dir, name string) (repo, identity, slug string) {
 	// A scratch workspace lives at "scratch-<slug>" with no repo, but its
 	// canonical slug — and its tmux session name — is the bare <slug>. Strip the
 	// prefix so it matches tmux and round-trips: `noz ls` must show a slug you
@@ -364,22 +375,23 @@ func detectRepo(dir, name string) (repo, slug string) {
 	gitPath := filepath.Join(dir, ".git")
 	fi, err := os.Stat(gitPath)
 	if err != nil || fi.IsDir() {
-		return "", slug
+		return "", "", slug
 	}
 
 	// .git is a file = this is a git worktree
 	data, err := os.ReadFile(gitPath)
 	if err != nil {
-		return "", slug
+		return "", "", slug
 	}
 
 	base := worktreeMainRepo(string(data))
 	if base == "" {
-		return "", slug
+		return "", "", slug
 	}
 	repo = filepath.Base(base)
+	identity = repoIdentityFor(base)
 	slug = strings.TrimPrefix(name, repo+"-")
-	return repo, slug
+	return repo, identity, slug
 }
 
 // categorizeSlug derives a category from the first segment of the slug (before the first hyphen).
@@ -461,12 +473,12 @@ func groupByCategory(sessions []sessionInfo, groupMin int) (map[string][]session
 func hasMultipleRepos(sessions []sessionInfo) bool {
 	seen := ""
 	for _, s := range sessions {
-		if s.repo == "" {
+		if s.identity == "" {
 			continue
 		}
 		if seen == "" {
-			seen = s.repo
-		} else if s.repo != seen {
+			seen = s.identity
+		} else if s.identity != seen {
 			return true
 		}
 	}
@@ -650,7 +662,7 @@ func sessionFromDir(dir, root string) string {
 	if dir == "" || filepath.Clean(filepath.Dir(dir)) != filepath.Clean(root) {
 		return ""
 	}
-	_, slug := detectRepo(dir, filepath.Base(dir))
+	_, _, slug := detectRepo(dir, filepath.Base(dir))
 	return slug
 }
 

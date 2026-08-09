@@ -79,7 +79,7 @@ func runPrune(cmd *cobra.Command, force bool, maxAge string, all bool) error {
 
 		name := e.Name()
 		path := filepath.Join(root, name)
-		_, slug := detectRepo(path, name)
+		_, _, slug := detectRepo(path, name)
 		if slug == "" {
 			kept++
 			continue
@@ -191,7 +191,7 @@ func removeSessionDir(path, name string) error {
 	if !isWithinRoot(nozRoot(), path) {
 		return fmt.Errorf("refusing to remove %q: outside the noz root", path)
 	}
-	_, slug := detectRepo(path, name)
+	_, _, slug := detectRepo(path, name)
 	if slug == "" {
 		slug = name // fallback label for error messages only
 	}
