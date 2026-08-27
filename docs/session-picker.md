@@ -132,6 +132,33 @@ noz setup tmux --repo-key C-s --all-key C-a   # rebind
 noz setup tmux --children-key ""              # drop a binding
 ```
 
+When a server is running, printing the snippet also warns about any picker key
+that's already taken, so a clash surfaces before you paste rather than after.
+
+## Verifying it took effect
+
+Print-only has one cost: the command can't know whether you pasted the snippet or
+sourced it. `noz setup tmux --check` closes that loop by reading the live server —
+still no writes, no state:
+
+| check | catches |
+| --- | --- |
+| config sourced | config edited after the server started and never re-sourced (the common case) |
+| `prefix+<key>` | binding absent, or bound to something that isn't noz (a collision, reported apart since the fix differs) |
+| status-right | the appended noz segment eaten by a later non-append `set -g status-right` — `-ga` protects the paste, not the aftermath, and TPM's `run` line loads plugins last |
+| noz on tmux PATH | `run-shell` can't find `noz`, so the keys silently do nothing — tmux inherits the environment of whoever started the server, which often lacks `~/go/bin` |
+
+Two deliberate properties, both from [PRINCIPLES.md](../PRINCIPLES.md) #6:
+
+- A live binding (or status-right segment) is treated as proof the block was
+  sourced and **overrides** the file-mtime heuristic. A manual `source-file`
+  leaves no mtime trace, so reporting "never sourced" while the keys demonstrably
+  work would be confidently wrong. Any one marker is enough — requiring all of
+  them would misreport a partly-applied config.
+- A check noz couldn't run is reported as `skip` and never rolls up into "looks
+  good". `--check` needs a running server, so it can't vouch for a config that
+  is correct but never loaded, and it says so instead of implying an all-clear.
+
 ## On-brand
 
 Stateless and derived-live: the picker reads the same git/tmux/filesystem

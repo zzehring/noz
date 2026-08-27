@@ -353,7 +353,13 @@ func discoverSessions() ([]sessionInfo, error) {
 
 // detectRepo reads the .git file in a worktree dir to find the parent repo.
 func detectRepo(dir, name string) (repo, slug string) {
-	slug = name
+	// A scratch workspace lives at "scratch-<slug>" with no repo, but its
+	// canonical slug — and its tmux session name — is the bare <slug>. Strip the
+	// prefix so it matches tmux and round-trips: `noz ls` must show a slug you
+	// can hand straight back to open/rm/close (which re-derive "scratch-<slug>"
+	// themselves). Git worktrees below recompute slug from the "<repo>-" prefix,
+	// so this only affects the no-repo scratch case.
+	slug = strings.TrimPrefix(name, "scratch-")
 
 	gitPath := filepath.Join(dir, ".git")
 	fi, err := os.Stat(gitPath)

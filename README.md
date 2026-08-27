@@ -193,6 +193,18 @@ noz setup tmux --repo-key C-s --all-key C-a   # use your own keys
 noz setup tmux --children-key ""              # omit the children binding
 ```
 
+Pasting the snippet isn't the same as it being live — a running tmux server won't
+re-read `~/.tmux.conf` on its own, so the usual reason "nothing happens" is simply
+that the config was never sourced. `--check` inspects the running server and says
+which parts are actually in effect:
+
+```bash
+noz setup tmux --check   # sourced? bound? not clobbered? noz on tmux's PATH?
+```
+
+It exits non-zero when a check fails, so it works as a dotfiles smoke test. It
+reads only — noz still never edits your tmux config.
+
 `noz pick` also has `--json` and a plain tab-separated form for scripting or
 your own picker. The filtering happens in noz (not raw `choose-tree -f`) because
 tmux's format filter falls back to the server's global env for untagged sessions,
@@ -366,7 +378,7 @@ harmless; they vanish when you `noz rm` the session.
 | `noz prune` | Remove stale worktrees with no live session (`--force`, `--age`, `--all`) |
 | `noz restore [filter]` | Re-create sessions that were live before a reboot |
 | `noz profile …` | Manage session profiles (`list`/`create`/`edit`/`show`) |
-| `noz setup tmux` | Print the tmux status-bar + jump-key snippet |
+| `noz setup tmux` | Print the tmux status-bar + jump-key snippet (`--check` verifies it's live) |
 | `noz setup claude` | Install CEL gate hooks (optional) |
 | `noz gate` / `noz policy …` | Policy endpoint + introspection (optional) |
 
