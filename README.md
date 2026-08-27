@@ -391,5 +391,5 @@ harmless; they vanish when you `noz rm` the session.
 - [x] Agentic offshoots — `spawn` task-scoped sessions, `NOZ_PARENT` lineage, `close` to return
 - [x] Report-back on close — offshoots stream context to the brain (`close --report`); local `close --merge`
 - [ ] Observability — surface `report ✓` + live "what's the agent doing right now" in `noz ls` / `noz top` (built on the gate)
-- [ ] Isolation providers (v2) — run agents in microVMs ([`grafana/umm`](https://github.com/grafana/umm))
-      for hard memory caps + isolation; `noz` stays the orchestrator
+- [ ] Isolation providers (v2) — run agents in microVMs (#19) for hard memory
+      caps + isolation; `noz` stays the orchestrator
