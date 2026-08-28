@@ -36,13 +36,13 @@ func runPath(cmd *cobra.Command, slug string) error {
 		return err
 	}
 
-	curRepo, _ := repoName()
+	curRepo, _ := repoIdentity()
 	var match *sessionInfo
 	for i := range sessions {
 		if sessions[i].slug != slug {
 			continue
 		}
-		if sessions[i].repo == curRepo {
+		if sessions[i].identity == curRepo {
 			match = &sessions[i]
 			break // current-repo match wins
 		}

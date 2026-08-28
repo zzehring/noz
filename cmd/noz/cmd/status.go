@@ -45,7 +45,7 @@ Use --json for a machine-readable form (e.g. a shell-prompt segment).`,
 // gatherStatus derives the current session's context from cwd, git, and tmux.
 func gatherStatus() statusInfo {
 	cwd, _ := os.Getwd()
-	repo, _ := repoName()
+	repo, _ := repoIdentity()
 	branch := gitBranch()
 	slug := currentSession()
 
