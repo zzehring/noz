@@ -202,11 +202,10 @@ func ensureWorktreeSlot(root, wtDir string) (reuse bool, err error) {
 }
 
 func runOpenWorktree(slug, baseBranch, profile, agentName, task string, force bool) error {
-	repo, err := repoDirName()
+	repo, identity, err := repoNames()
 	if err != nil {
 		return err
 	}
-	identity, _ := repoIdentity()
 
 	if !force {
 		// Compare identities, not directory names: the tag is an identity, and
@@ -302,11 +301,10 @@ func runOpenPR(prNumber string, depth int, profile, agentName string, force bool
 		return fmt.Errorf("gh CLI not found (needed for --pr)")
 	}
 
-	repo, err := repoDirName()
+	repo, identity, err := repoNames()
 	if err != nil {
 		return err
 	}
-	identity, _ := repoIdentity()
 
 	slug := "review-" + prNumber
 	if err := validNewSlug(slug); err != nil {
@@ -861,19 +859,6 @@ func liveSessionRepo(slug string) (repo string, live bool) {
 		return r, true
 	}
 	return "", true // session exists but untagged ("-NOZ_REPO")
-}
-
-// repoDirName is the repo's *directory* name — the basename of the main
-// checkout. It composes worktree paths ("<repo>-<slug>") and brain paths
-// (".noz/<repo>/…"), both of which are load-bearing on disk, so it must stay
-// the basename. For the repo's identity (tag, picker, status bar) use
-// repoIdentity; see the note above mainRepoDir in git.go.
-func repoDirName() (string, error) {
-	dir, err := workingRepoDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Base(dir), nil
 }
 
 func runGit(args ...string) error {

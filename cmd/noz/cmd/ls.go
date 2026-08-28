@@ -96,10 +96,10 @@ func runLs(cmd *cobra.Command, filter string, activeOnly, staleOnly, all bool, g
 		return err
 	}
 
-	// Default: scope to current repo if in one (unless -A)
-	if !all && inGitRepo() {
-		identity, err := repoIdentity()
-		if err == nil {
+	// Default: scope to current repo if in one (unless -A). repoIdentity
+	// reports "not in a git repo" itself, so it is the whole check.
+	if !all {
+		if identity, err := repoIdentity(); err == nil {
 			var scoped []sessionInfo
 			for _, s := range sessions {
 				if s.identity == identity {

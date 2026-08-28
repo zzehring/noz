@@ -73,11 +73,10 @@ func spawnOffshoot(spec spawnSpec, parent, agentName string, launch bool) (strin
 	if err := validNewSlug(spec.Slug); err != nil {
 		return "", err
 	}
-	repo, err := repoDirName()
+	repo, identity, err := repoNames()
 	if err != nil {
 		return "", err
 	}
-	identity, _ := repoIdentity()
 	root := nozRoot()
 	wtDir := filepath.Join(root, repo+"-"+spec.Slug)
 	if err := os.MkdirAll(root, 0755); err != nil {

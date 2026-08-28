@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -123,69 +122,51 @@ func pathBase(p string) string {
 	return p
 }
 
-func TestParseRemoteConfig(t *testing.T) {
-	out := strings.Join([]string{
-		"remote.origin.url https://github.com/zzehring/noz.git",
-		"remote.upstream.url git@github.com:zzehring/noz.git",
-		"remote.my.fork.url git@github.com:someone/noz.git", // dotted remote name
-		"remote.empty.url ", // no URL — skipped
-		"garbage",
-		"",
-	}, "\n")
-
-	got := parseRemoteConfig(out)
-	want := map[string]string{
-		"origin":   "https://github.com/zzehring/noz.git",
-		"upstream": "git@github.com:zzehring/noz.git",
-		"my.fork":  "git@github.com:someone/noz.git",
-	}
-	if len(got) != len(want) {
-		t.Fatalf("parsed %d remotes, want %d: %#v", len(got), len(want), got)
-	}
-	for name, url := range want {
-		if got[name] != url {
-			t.Errorf("remote %q = %q, want %q", name, got[name], url)
-		}
-	}
-}
-
-// Which remote defines identity. The rule mirrors noz's branch recovery: one
-// candidate is a match, several are a question.
-func TestPickRemoteURL(t *testing.T) {
+func TestRemoteURLFor(t *testing.T) {
 	cases := []struct {
-		name    string
-		remotes map[string]string
-		want    string
+		name string
+		out  string
+		want string
 	}{
 		{
 			// The fork workflow: origin is your fork, and #13 wants your fork
 			// and upstream to read as distinct projects.
-			name:    "origin wins over upstream",
-			remotes: map[string]string{"origin": "fork.git", "upstream": "canonical.git"},
-			want:    "fork.git",
+			name: "origin wins over other remotes",
+			out: "remote.upstream.url canonical.git\n" +
+				"remote.origin.url fork.git",
+			want: "fork.git",
 		},
 		{
 			// A renamed remote still yields a real identity rather than
 			// silently degrading to the directory basename.
-			name:    "no origin, exactly one remote is unambiguous",
-			remotes: map[string]string{"upstream": "canonical.git"},
-			want:    "canonical.git",
+			name: "no origin, exactly one remote is unambiguous",
+			out:  "remote.upstream.url canonical.git",
+			want: "canonical.git",
 		},
 		{
 			// Genuine ambiguity — decline to guess; caller falls back.
-			name:    "no origin, several remotes: declines to guess",
-			remotes: map[string]string{"fork": "a.git", "upstream": "b.git"},
-			want:    "",
+			name: "no origin, several remotes",
+			out: "remote.fork.url a.git\n" +
+				"remote.upstream.url b.git",
+			want: "",
 		},
 		{
-			name:    "no remotes at all",
-			remotes: map[string]string{},
-			want:    "",
+			name: "remote names may contain dots",
+			out:  "remote.my.fork.url dotted.git",
+			want: "dotted.git",
 		},
+		{
+			name: "entries without a URL are skipped",
+			out: "remote.empty.url \n" +
+				"remote.real.url real.git",
+			want: "real.git",
+		},
+		{name: "garbage", out: "not a config line\n\n", want: ""},
+		{name: "no remotes at all", out: "", want: ""},
 	}
 	for _, c := range cases {
-		if got := pickRemoteURL(c.remotes); got != c.want {
-			t.Errorf("%s: pickRemoteURL = %q, want %q", c.name, got, c.want)
+		if got := remoteURLFor(c.out); got != c.want {
+			t.Errorf("%s: remoteURLFor = %q, want %q", c.name, got, c.want)
 		}
 	}
 }
@@ -193,7 +174,7 @@ func TestPickRemoteURL(t *testing.T) {
 // A bare repo has no working tree, so noz has nothing to open a session in and
 // must report that rather than guess. mainRepoDir() resolves --git-common-dir,
 // which succeeds in a bare repo and returns its *parent* directory — so without
-// the working-tree guard in workingRepoDir, `noz status` in a bare repo would
+// the working-tree guard in repoNames, `noz status` in a bare repo would
 // silently name the parent folder as the repo.
 func TestWorkingRepoDirRejectsBareRepo(t *testing.T) {
 	bare := filepath.Join(t.TempDir(), "bare.git")
@@ -204,8 +185,8 @@ func TestWorkingRepoDirRejectsBareRepo(t *testing.T) {
 	restore := chdir(t, bare)
 	defer restore()
 
-	if dir, err := workingRepoDir(); err == nil {
-		t.Errorf("workingRepoDir() in a bare repo returned %q, want an error", dir)
+	if dir, id, err := repoNames(); err == nil {
+		t.Errorf("repoNames() in a bare repo returned %q/%q, want an error", dir, id)
 	}
 	if repo, err := repoDirName(); err == nil {
 		t.Errorf("repoDirName() in a bare repo returned %q, want an error", repo)

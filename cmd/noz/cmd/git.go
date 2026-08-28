@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // branchExists reports whether a local branch with the given name exists.
@@ -65,42 +66,139 @@ func worktreeMainRepo(gitFileContent string) string {
 
 // --- repo identity ---------------------------------------------------------
 //
-// noz needs two different names for a repo, and conflating them is issue #13.
-// Both derive from mainRepoDir (close.go), which resolves a worktree to its
-// main checkout.
+// noz needs two names for a repo, and conflating them is issue #13.
 //
-//   - The *directory* name (repoDirName) composes worktree paths
-//     ("<repo>-<slug>") and brain paths (".noz/<repo>/…"). Both are on disk and
-//     load-bearing: Claude keys transcripts by absolute cwd, and the brain holds
-//     briefs and back-reports that cannot regenerate. Renaming either orphans
-//     real user data, so this stays the directory basename.
+//   - The directory name composes worktree paths ("<repo>-<slug>") and brain
+//     paths (".noz/<repo>/..."). Both are load-bearing on disk: Claude keys
+//     transcripts by absolute cwd, and the brain holds briefs and back-reports
+//     that cannot regenerate. Renaming either orphans real user data.
 //
-//   - The *identity* (repoIdentity) tags the session (NOZ_REPO), scopes
-//     `noz ls` and the prefix+g picker, and shows in the status bar. Derived
-//     from the remote, so a fork and its upstream stay distinct even when both
-//     clone under the same directory name, and one repo cloned under two
-//     different directory names is recognised as one project.
+//   - The identity tags the session (NOZ_REPO), scopes `noz ls` and the
+//     prefix+g picker, and shows in the status bar. It comes from the remote,
+//     so a fork and its upstream stay distinct even when both clone under the
+//     same directory name, and one repo cloned under two different directory
+//     names is recognised as one project.
 //
 // Only the identity changed in #13. Nothing on disk moved.
 
-// workingRepoDir returns the main checkout's path, but only from inside a
-// working tree.
+// repoNames resolves the repo containing cwd to both of its names in one git
+// call. identity falls back to dirName when there is no usable remote, which is
+// how noz behaved everywhere before #13.
 //
-// The working-tree check is load-bearing, not defensive. mainRepoDir() resolves
-// --git-common-dir, which succeeds in a *bare* repo and yields that repo's
-// parent directory — so without this guard noz would silently adopt the parent
-// folder's name as the repo. --show-toplevel fails in a bare repo, which is the
-// distinction we want: a bare repo has no working tree, so there is nothing for
-// noz to open a session in.
-func workingRepoDir() (string, error) {
-	if err := exec.Command("git", "rev-parse", "--show-toplevel").Run(); err != nil {
-		return "", fmt.Errorf("not in a git repo")
+// --show-toplevel doubles as the working-tree guard: it fails in a bare repo,
+// where --git-common-dir alone would succeed and yield the repo's *parent*
+// directory, silently naming the wrong thing.
+func repoNames() (dirName, identity string, err error) {
+	out, err := exec.Command("git", "rev-parse", "--show-toplevel", "--git-common-dir").Output()
+	if err != nil {
+		return "", "", fmt.Errorf("not in a git repo")
 	}
-	dir := mainRepoDir()
-	if dir == "" {
-		return "", fmt.Errorf("not in a git repo")
+	_, commonDir, ok := strings.Cut(strings.TrimSpace(string(out)), "\n")
+	if !ok {
+		return "", "", fmt.Errorf("not in a git repo")
 	}
-	return dir, nil
+	// --git-common-dir comes back relative to cwd when cwd is inside the main
+	// checkout. Its parent is that checkout, whether we started there or in a
+	// worktree pointing at it.
+	abs, err := filepath.Abs(strings.TrimSpace(commonDir))
+	if err != nil {
+		return "", "", fmt.Errorf("not in a git repo")
+	}
+	dir := filepath.Dir(abs)
+	return filepath.Base(dir), repoIdentityFor(dir), nil
+}
+
+// repoDirName names directories, and must stay the basename. See above.
+func repoDirName() (string, error) {
+	dir, _, err := repoNames()
+	return dir, err
+}
+
+// repoIdentity names the project. See above.
+func repoIdentity() (string, error) {
+	_, id, err := repoNames()
+	return id, err
+}
+
+// repoIdentityFor derives the identity of the repo rooted at repoDir, falling
+// back to the directory basename when there is no usable remote. A local-only
+// repo is still a project; it just can't be told apart from a same-named one
+// elsewhere.
+func repoIdentityFor(repoDir string) string {
+	if id := parseRemoteURL(identityRemoteURL(repoDir)); id != "" {
+		return id
+	}
+	return filepath.Base(repoDir)
+}
+
+// remoteURLFor picks the remote that defines identity, from the output of
+// `git config --get-regexp ^remote\..*\.url` ("remote.<name>.url <url>" per
+// line; remote names may themselves contain dots).
+//
+// origin wins when present: in the fork workflow origin is *your* fork, and #13
+// wants your fork and its upstream to read as distinct projects. Otherwise a
+// single remote is unambiguous and is used, so a repo whose remote was renamed
+// still gets a real identity instead of silently falling back. Several remotes
+// and no origin is a genuine ambiguity, and noz declines to guess — the same
+// rule it already applies to branch recovery: one candidate is a match, several
+// are a question.
+func remoteURLFor(configOut string) string {
+	var sole string
+	seen := 0
+	for _, line := range strings.Split(configOut, "\n") {
+		key, url, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok {
+			continue
+		}
+		name, ok := strings.CutPrefix(key, "remote.")
+		if !ok {
+			continue
+		}
+		name, ok = strings.CutSuffix(name, ".url")
+		if !ok || name == "" {
+			continue
+		}
+		if url = strings.TrimSpace(url); url == "" {
+			continue
+		}
+		if name == "origin" {
+			return url
+		}
+		sole = url
+		seen++
+	}
+	if seen == 1 {
+		return sole
+	}
+	return ""
+}
+
+// remoteURLCache memoises lookups for the life of the process: `noz ls` asks
+// once per session and sessions share main repos, so this is one lookup per
+// repo rather than per session. Nothing is written to disk (PRINCIPLES #1). The
+// mutex is because nothing about this map would stop a future caller from
+// resolving sessions concurrently.
+var (
+	remoteURLMu    sync.Mutex
+	remoteURLCache = map[string]string{}
+)
+
+// identityRemoteURL returns the URL of the remote that defines repoDir's
+// identity, or "" when there is none or the choice is ambiguous.
+func identityRemoteURL(repoDir string) string {
+	remoteURLMu.Lock()
+	defer remoteURLMu.Unlock()
+	if url, ok := remoteURLCache[repoDir]; ok {
+		return url
+	}
+	// git exits non-zero when the repo has no remotes at all; that yields ""
+	// and the caller falls back to the directory name.
+	url := ""
+	if out, err := exec.Command("git", "-C", repoDir, "config", "--get-regexp", `^remote\..*\.url`).Output(); err == nil {
+		url = remoteURLFor(string(out))
+	}
+	remoteURLCache[repoDir] = url
+	return url
 }
 
 // parseRemoteURL normalizes a git remote URL to "org/repo", keeping any deeper
@@ -150,96 +248,6 @@ func cleanRepoPath(p string) string {
 		}
 	}
 	return p
-}
-
-// parseRemoteConfig reads `git config --get-regexp ^remote\..*\.url` output
-// ("remote.origin.url https://…" per line) into name -> url. Remote names may
-// themselves contain dots, so the name is whatever sits between the "remote."
-// prefix and the ".url" suffix.
-func parseRemoteConfig(out string) map[string]string {
-	remotes := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
-		key, url, ok := strings.Cut(strings.TrimSpace(line), " ")
-		if !ok {
-			continue
-		}
-		name, ok := strings.CutPrefix(key, "remote.")
-		if !ok {
-			continue
-		}
-		name, ok = strings.CutSuffix(name, ".url")
-		if !ok || name == "" {
-			continue
-		}
-		if url = strings.TrimSpace(url); url != "" {
-			remotes[name] = url
-		}
-	}
-	return remotes
-}
-
-// pickRemoteURL chooses which remote defines identity.
-//
-// origin wins when present: in the standard fork workflow origin is *your*
-// fork, and #13 explicitly wants your fork and its upstream to read as distinct
-// projects. Without an origin, exactly one remote is unambiguous and is used —
-// so a repo whose remote was renamed still gets a real identity instead of
-// silently falling back. Several remotes and no origin is a genuine ambiguity,
-// and noz declines to guess.
-//
-// That's the same rule noz already applies to branch recovery: one candidate is
-// a match, several are a question.
-func pickRemoteURL(remotes map[string]string) string {
-	if url, ok := remotes["origin"]; ok {
-		return url
-	}
-	if len(remotes) == 1 {
-		for _, url := range remotes {
-			return url
-		}
-	}
-	return ""
-}
-
-// remoteURLCache memoises remote lookups for the life of the process: `noz ls`
-// asks once per session and sessions share main repos, so this turns N lookups
-// into one per repo. Nothing is written to disk and the process exits in
-// milliseconds, so there is no state to drift (PRINCIPLES #1).
-var remoteURLCache = map[string]string{}
-
-// identityRemoteURL returns the URL of the remote that defines repoDir's
-// identity, or "" when there is no remote or the choice is ambiguous.
-func identityRemoteURL(repoDir string) string {
-	if v, ok := remoteURLCache[repoDir]; ok {
-		return v
-	}
-	url := ""
-	if out, err := exec.Command("git", "-C", repoDir, "config", "--get-regexp", `^remote\..*\.url`).Output(); err == nil {
-		url = pickRemoteURL(parseRemoteConfig(string(out)))
-	}
-	remoteURLCache[repoDir] = url
-	return url
-}
-
-// repoIdentityFor derives the identity of the repo rooted at repoDir, falling
-// back to the directory basename when there is no usable remote (see
-// pickRemoteURL for which remote that is). A local-only
-// repo is still a project; it just can't be told apart from a same-named one
-// elsewhere — which is exactly the behaviour noz had everywhere before #13.
-func repoIdentityFor(repoDir string) string {
-	if id := parseRemoteURL(identityRemoteURL(repoDir)); id != "" {
-		return id
-	}
-	return filepath.Base(repoDir)
-}
-
-// repoIdentity returns the identity of the repo containing cwd.
-func repoIdentity() (string, error) {
-	dir, err := workingRepoDir()
-	if err != nil {
-		return "", err
-	}
-	return repoIdentityFor(dir), nil
 }
 
 // repoTagMatches reports whether a live session's NOZ_REPO tag refers to the

@@ -106,10 +106,8 @@ func sessionExists(slug, root string) bool {
 // sessionDirs resolves a session's worktree and scratch directories from the
 // current repo context. wtDir is empty when not in a git repo.
 func sessionDirs(slug, root string) (wtDir, scratchDir string) {
-	if inGitRepo() {
-		if repo, err := repoDirName(); err == nil {
-			wtDir = filepath.Join(root, repo+"-"+slug)
-		}
+	if repo, err := repoDirName(); err == nil {
+		wtDir = filepath.Join(root, repo+"-"+slug)
 	}
 	scratchDir = filepath.Join(root, "scratch-"+slug)
 	return wtDir, scratchDir
