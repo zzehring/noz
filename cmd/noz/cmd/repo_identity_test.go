@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -183,6 +186,48 @@ func TestPickRemoteURL(t *testing.T) {
 	for _, c := range cases {
 		if got := pickRemoteURL(c.remotes); got != c.want {
 			t.Errorf("%s: pickRemoteURL = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// A bare repo has no working tree, so noz has nothing to open a session in and
+// must report that rather than guess. mainRepoDir() resolves --git-common-dir,
+// which succeeds in a bare repo and returns its *parent* directory — so without
+// the working-tree guard in workingRepoDir, `noz status` in a bare repo would
+// silently name the parent folder as the repo.
+func TestWorkingRepoDirRejectsBareRepo(t *testing.T) {
+	bare := filepath.Join(t.TempDir(), "bare.git")
+	if out, err := exec.Command("git", "init", "-q", "--bare", bare).CombinedOutput(); err != nil {
+		t.Skipf("git init --bare unavailable: %v: %s", err, out)
+	}
+
+	restore := chdir(t, bare)
+	defer restore()
+
+	if dir, err := workingRepoDir(); err == nil {
+		t.Errorf("workingRepoDir() in a bare repo returned %q, want an error", dir)
+	}
+	if repo, err := repoDirName(); err == nil {
+		t.Errorf("repoDirName() in a bare repo returned %q, want an error", repo)
+	}
+	if id, err := repoIdentity(); err == nil {
+		t.Errorf("repoIdentity() in a bare repo returned %q, want an error", id)
+	}
+}
+
+// chdir moves into dir for the duration of a test, returning a restore func.
+func chdir(t *testing.T, dir string) func() {
+	t.Helper()
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		if err := os.Chdir(prev); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

@@ -83,6 +83,26 @@ func worktreeMainRepo(gitFileContent string) string {
 //
 // Only the identity changed in #13. Nothing on disk moved.
 
+// workingRepoDir returns the main checkout's path, but only from inside a
+// working tree.
+//
+// The working-tree check is load-bearing, not defensive. mainRepoDir() resolves
+// --git-common-dir, which succeeds in a *bare* repo and yields that repo's
+// parent directory — so without this guard noz would silently adopt the parent
+// folder's name as the repo. --show-toplevel fails in a bare repo, which is the
+// distinction we want: a bare repo has no working tree, so there is nothing for
+// noz to open a session in.
+func workingRepoDir() (string, error) {
+	if err := exec.Command("git", "rev-parse", "--show-toplevel").Run(); err != nil {
+		return "", fmt.Errorf("not in a git repo")
+	}
+	dir := mainRepoDir()
+	if dir == "" {
+		return "", fmt.Errorf("not in a git repo")
+	}
+	return dir, nil
+}
+
 // parseRemoteURL normalizes a git remote URL to "org/repo", keeping any deeper
 // nesting ("group/subgroup/repo") because that is part of the identity on
 // GitLab. The host is deliberately dropped: the tag is shown in the tmux status
@@ -215,9 +235,9 @@ func repoIdentityFor(repoDir string) string {
 
 // repoIdentity returns the identity of the repo containing cwd.
 func repoIdentity() (string, error) {
-	dir := mainRepoDir()
-	if dir == "" {
-		return "", fmt.Errorf("not in a git repo")
+	dir, err := workingRepoDir()
+	if err != nil {
+		return "", err
 	}
 	return repoIdentityFor(dir), nil
 }

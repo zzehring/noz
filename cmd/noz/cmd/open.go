@@ -869,9 +869,9 @@ func liveSessionRepo(slug string) (repo string, live bool) {
 // the basename. For the repo's identity (tag, picker, status bar) use
 // repoIdentity; see the note above mainRepoDir in git.go.
 func repoDirName() (string, error) {
-	dir := mainRepoDir()
-	if dir == "" {
-		return "", fmt.Errorf("not in a git repo")
+	dir, err := workingRepoDir()
+	if err != nil {
+		return "", err
 	}
 	return filepath.Base(dir), nil
 }
