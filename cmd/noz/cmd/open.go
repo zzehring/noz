@@ -86,7 +86,11 @@ Examples:
 	cmd.Flags().IntVar(&depth, "depth", 1, "git fetch depth for PR reviews (0 = full history)")
 	cmd.Flags().StringVar(&profile, "profile", "", "apply a session profile (noz profile list to see available)")
 	_ = cmd.RegisterFlagCompletionFunc("profile", completeProfiles)
-	cmd.Flags().StringVar(&agentName, "agent", "", "open a coding agent in a window (claude, opencode, codex, gemini, pi)")
+	// Derived from the registry, not spelled out: a hardcoded list silently
+	// went stale the moment omp was added, so `--help` omitted an agent that
+	// tab completion offered.
+	cmd.Flags().StringVar(&agentName, "agent", "",
+		"open a coding agent in a window ("+strings.Join(agent.Names(), ", ")+")")
 	_ = cmd.RegisterFlagCompletionFunc("agent", completeAgents)
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "proceed even if the slug is a live session in another repo")
 	cmd.Flags().BoolVarP(&detach, "detach", "d", false, "create the session but don't attach/switch to it")

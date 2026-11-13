@@ -37,3 +37,28 @@ func TestNames(t *testing.T) {
 		t.Errorf("Names() = %v", Names())
 	}
 }
+
+// oh-my-pi installs as `omp`, so a descriptor keyed on "pi" never matches it
+// and `noz ls` shows the session with no agent.
+func TestOmpIsItsOwnAgent(t *testing.T) {
+	a, ok := Lookup("omp")
+	if !ok {
+		t.Fatal("omp is not in the registry")
+	}
+	if got := Detect("omp"); got != "omp" {
+		t.Errorf("Detect(%q) = %q, want %q", "omp", got, "omp")
+	}
+	// pi must not claim omp, nor omp claim pi.
+	if got := Detect("pi"); got != "pi" {
+		t.Errorf("Detect(\"pi\") = %q, want \"pi\"", got)
+	}
+
+	// omp takes its prompt positionally, like claude, so --task reaches it.
+	argv := a.LaunchWith("read .noz/brief/x.md and start")
+	if len(argv) != 2 || argv[0] != "omp" || argv[1] != "read .noz/brief/x.md and start" {
+		t.Errorf("LaunchWith() = %#v, want [omp <prompt>]", argv)
+	}
+	if got := a.LaunchWith(""); len(got) != 1 || got[0] != "omp" {
+		t.Errorf("LaunchWith(\"\") = %#v, want [omp]", got)
+	}
+}

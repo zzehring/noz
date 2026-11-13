@@ -1,7 +1,7 @@
 // Package agent is noz's registry of coding agents it can launch and
 // recognize. Adding support for a new agent is a matter of adding a descriptor
-// here — no switch statements elsewhere. Today only Claude has gate-hook
-// integration; the rest are launch/detect only.
+// here — no switch statements elsewhere. Claude has gate-hook integration and
+// omp has a gate extension; the rest are launch/detect only.
 package agent
 
 import "regexp"
@@ -27,6 +27,13 @@ var registry = []Agent{
 	{Name: "codex", Launch: []string{"codex"}, match: exact("codex")},
 	{Name: "gemini", Launch: []string{"gemini"}, match: exact("gemini")},
 	{Name: "pi", Launch: []string{"pi"}, match: exact("pi")},
+	// oh-my-pi installs as `omp`, not `pi`, so it needs its own descriptor —
+	// without one, `noz ls` shows an omp session with no agent detected.
+	// Verified: `omp --help` documents `MESSAGES` as positional arguments, the
+	// same convention Claude uses. Upstream `pi` is left without promptArgs
+	// because its convention has not been checked on a real binary, and this
+	// field is only set for agents we have verified.
+	{Name: "omp", Launch: []string{"omp"}, promptArgs: positionalPrompt, match: exact("omp")},
 }
 
 // LaunchWith returns the argv to start the agent with an initial prompt. If the
