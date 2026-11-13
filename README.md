@@ -309,8 +309,17 @@ time.
 ## Optional: command gating
 
 Not the focus of the tool, but available: for agents with pre-tool hooks
-(Claude Code today), evaluate every command and file access against a
-[CEL](https://github.com/google/cel-go) policy before it runs.
+(Claude Code today, oh-my-pi via an extension), evaluate every command and file
+access against a [CEL](https://github.com/google/cel-go) policy before it runs.
+
+**What this is, and what it isn't.** The gate is a guardrail, not a sandbox. It
+stops mistakes — an accidental secret read, a push to the wrong place — and
+routes the decisions that matter to you, auto-allowing the boring ones. It is
+*not* a containment boundary against a determined agent: `go test` runs
+arbitrary code, and a shell is a general interpreter, so a policy that inspects
+commands can always be out-spelled. Real containment is the credential (scope it
+so "cannot merge" is enforced by the forge, not by a rule) and an execution
+sandbox. Treat the gate as defense in depth, and don't mistake it for the wall.
 
 ```bash
 noz setup claude --policy readonly --project-only   # install hooks (readonly|dev|sre)

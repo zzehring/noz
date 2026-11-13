@@ -1,0 +1,264 @@
+# yaml-language-server: $schema=schema.json
+name: brr
+description: Unattended policy — allowlist-only, denies outward writes outright
+
+# Read this before trusting this file.
+#
+# This policy bounds which *commands* an agent runs. It does not bound what a
+# credential can do, and it cannot. Two honest limits:
+#
+#   1. bash is a general interpreter. A deny-list loses, always — deny `curl`
+#      and the same request goes out through `python`, `node`, or a `git` alias.
+#      That is why every rule here is an allowlist ending in default-deny: a
+#      capability nobody enumerated is off rather than available (#24).
+#
+#   2. `go test` runs arbitrary code. In a Go repo the agent must be able to run
+#      the suite, and the suite is a program. So even a perfect allowlist leaves
+#      arbitrary execution inside the allowed set.
+#
+# Taken together: this policy prevents *mistakes*, not a determined path out of
+# the box. The actual boundaries are elsewhere, and brr is only safe with them:
+#
+#   - a short-lived, repo-scoped credential, so "cannot merge" is enforced by
+#     the forge rather than by a rule here (#26)
+#   - an execution sandbox, so arbitrary code can't reach outside the worktree
+#     (#19)
+#
+# PAUSE is deliberately unused. An unattended run that pauses blocks forever,
+# and a human tapping enter to unblock it is the reflex brr exists to remove.
+# Everything here is ALLOW or DENY.
+
+rules:
+  # --- Deny secrets first. Ordered above every ALLOW on purpose: first match
+  # wins, so a guard placed after an allowlist never runs. That ordering bug is
+  # exactly what made `cat ~/.aws/credentials` ALLOW under dev (#24). ---
+
+  - name: deny-secret-paths
+    description: >
+      Secret files and credential directories, by path or by argument.
+
+      Read honestly: this is an enumeration, and enumerations lose. The list
+      grew once already because it covered ~/.aws and ~/.ssh but not
+      ~/.config/sops/age/keys.txt — the key that decrypts every other secret on
+      the machine. Whatever is missing now is readable.
+
+      Reads are not confined to an allowlist because a dev agent legitimately
+      reads most of the filesystem: the Go toolchain, module cache, and system
+      headers are all outside the session. So read protection here is a list of
+      what we thought of, and the thing that actually confines reads is an
+      execution sandbox (#19). That is the strongest argument for it.
+    cel: |
+      (request.tool in ["read", "write", "edit"] &&
+        (request.path.matches(".*\\.(env|pem|key|p12|pfx|secret|credentials)$") ||
+         request.path.endsWith("/credentials") || request.path.endsWith("/secrets") ||
+         request.path.contains("/.config/sops/") ||
+         request.path.contains("/.config/age/") ||
+         request.path.contains("/.age/") ||
+         request.path.contains("/.config/gh/") ||
+         request.path.contains("/.config/tea/") ||
+         request.path.contains("/.git-credentials") ||
+         request.path.contains("/.docker/config.json") ||
+         request.path.contains("/.npmrc") ||
+         request.path.contains("/Library/Keychains/") ||
+         request.path.contains("/.ssh/") ||
+         request.path.contains("/.aws/") ||
+         request.path.contains("/.config/gcloud/") ||
+         request.path.contains("/.kube/config") ||
+         request.path.contains("/.gnupg/") ||
+         request.path.contains("/.netrc"))) ||
+      (request.tool == "bash" &&
+        request.args.exists(a,
+          a.matches(".*\\.(env|pem|key|p12|pfx|secret|credentials)$") ||
+          a.endsWith("/credentials") || a.endsWith("/secrets") ||
+          a.contains("/.config/sops/") ||
+          a.contains("/.config/age/") ||
+          a.contains("/.age/") ||
+          a.contains("/.config/gh/") ||
+          a.contains("/.config/tea/") ||
+          a.contains("/.git-credentials") ||
+          a.contains("/.docker/config.json") ||
+          a.contains("/.npmrc") ||
+          a.contains("/Library/Keychains/") ||
+          a.contains("/.ssh/") ||
+          a.contains("/.aws/") ||
+          a.contains("/.config/gcloud/") ||
+          a.contains("/.kube/config") ||
+          a.contains("/.gnupg/") ||
+          a.contains("/.netrc")))
+    verdict: DENY
+
+  - name: deny-env-dump
+    description: Dumping the environment leaks whatever credential was injected
+    cel: request.cmd in ["env", "printenv", "set", "export"]
+    verdict: DENY
+
+  # --- Deny outward writes. Belt to the credential's braces: with a properly
+  # scoped token these are impossible anyway, and a rule that merely agrees
+  # with the token costs nothing. ---
+
+  - name: deny-gh-write
+    description: Merge, review, release, and anything that speaks to an issue
+    cel: |
+      request.cmd == "gh" &&
+        request.args.exists(a, a in [
+          "merge", "review", "ready", "close", "comment", "edit",
+          "delete", "release", "secret", "variable", "workflow", "api"])
+    verdict: DENY
+
+  - name: deny-git-push-force
+    description: Rewriting published history is not recoverable by review
+    cel: |
+      request.cmd == "git" &&
+        request.args.exists(a, a == "push") &&
+        request.args.exists(a, a == "--force" || a == "-f" || a == "--force-with-lease")
+    verdict: DENY
+
+  - name: deny-git-history-rewrite
+    cel: |
+      request.cmd == "git" &&
+        request.args.exists(a, a in ["filter-branch", "reflog", "gc"])
+    verdict: DENY
+
+  # --- Deny the things that cannot be bounded once allowed. General
+  # interpreters and direct egress would each reopen everything above. ---
+
+  - name: deny-interpreters
+    description: An interpreter reaches every denied capability by another spelling
+    cel: |
+      request.cmd in [
+        "python", "python3", "pip", "pip3", "node", "npm", "npx", "deno", "bun",
+        "ruby", "perl", "php", "osascript", "sh", "bash", "zsh", "fish", "eval"]
+    verdict: DENY
+
+  - name: deny-network
+    description: Egress belongs at a network boundary, not in a command rule
+    cel: |
+      request.cmd in [
+        "curl", "wget", "nc", "ncat", "socat", "ssh", "scp", "sftp", "rsync",
+        "telnet", "ftp", "aws", "gcloud", "az", "kubectl", "helm", "terraform"]
+    verdict: DENY
+
+  - name: deny-privilege
+    cel: request.cmd in ["sudo", "su", "doas", "chown", "chmod", "launchctl", "systemctl"]
+    verdict: DENY
+
+  - name: deny-noz-credential-helper
+    description: >
+      The helper relays a credential, so reaching it directly would make it an
+      oracle. The pipe already prevents that — run by hand it has no descriptor
+      to read — so this rule is defence in depth rather than the boundary, and
+      is written down as such.
+    cel: |
+      request.cmd == "noz" &&
+        request.args.exists(a, a == "credential-helper")
+    verdict: DENY
+
+  - name: deny-noz-self-modification
+    description: >
+      brr must not be able to rewrite its own gate — that voids the rest.
+      Stated unconditionally here rather than relying on write containment,
+      because containment can be widened by write_roots in the user's config
+      and this must not be widenable along with it.
+    cel: |
+      (request.cmd == "noz" &&
+        request.args.exists(a, a in ["setup", "gate", "policy"])) ||
+      (request.tool in ["write", "edit"] &&
+        (request.path.contains("/policies/") ||
+         request.path.contains("settings.json") ||
+         request.path.contains("/.claude/") ||
+         // pi and omp load extensions from these, and an extension runs
+         // in-process with the agent. Writing one replaces the gate.
+         request.path.contains("/.omp/") ||
+         request.path.contains("/.pi/") ||
+         request.path.contains("/extensions/")))
+    verdict: DENY
+
+  # --- Allow the inner loop. This is the whole working set; anything absent
+  # is denied by default-deny below. ---
+
+  - name: allow-go-toolchain
+    cel: |
+      request.cmd in ["go", "gofmt", "goimports", "golangci-lint", "govulncheck", "make"]
+    verdict: ALLOW
+
+  - name: allow-git-local
+    description: Local git, after the push and rewrite denials above
+    cel: request.cmd == "git"
+    verdict: ALLOW
+
+  - name: allow-gh-read
+    description: Reading the forge is how brr learns what it was asked to do
+    cel: |
+      request.cmd == "gh" &&
+        request.args.exists(a, a in ["view", "list", "status", "diff", "checks"])
+    verdict: ALLOW
+
+  - name: allow-gh-pr-create
+    description: >
+      The point of brr. Safe only because the credential cannot merge what it
+      opens — see the header.
+    cel: |
+      request.cmd == "gh" &&
+        request.args.exists(a, a == "pr") &&
+        request.args.exists(a, a == "create")
+    verdict: ALLOW
+
+  - name: allow-noz-publish
+    description: >
+      The one outward action an unattended run may take. Safe to allowlist
+      because it is narrow: it pushes the branch and opens a draft pull
+      request, and has no parameter that turns it into a merge, a comment, or a
+      release. The session never receives the credential — noz holds it — so
+      this is not a grant of forge access, only of this one act.
+    cel: |
+      request.cmd == "noz" &&
+        request.args.exists(a, a == "publish")
+    verdict: ALLOW
+
+  - name: allow-noz-readonly
+    description: Navigation and status are free; create and destroy are not
+    cel: |
+      request.cmd == "noz" &&
+        request.args.exists(a, a in ["ls", "status", "path", "peek", "pick", "back", "sw"])
+    verdict: ALLOW
+
+  - name: allow-read-tools
+    description: Inspection only — no interpreters, no writers
+    cel: |
+      request.cmd in [
+        "cat", "ls", "find", "grep", "rg", "jq", "yq", "head", "tail", "wc",
+        "diff", "file", "stat", "tree", "sort", "uniq", "cut", "basename",
+        "dirname", "pwd", "which", "echo", "date", "true", "test"]
+    verdict: ALLOW
+
+  - name: confine-writes
+    description: >
+      Writes stay inside the session worktree. Without this, allow-file-access
+      below permitted a write to any path the secret guards did not name —
+      ~/.gitconfig (which can install a credential helper), ~/.zshrc, the noz
+      binary, or this audit log. Each of those defeats every other rule here,
+      so an allowlist of paths it did not think of is not a boundary.
+      Paths are normalized before evaluation, so ".." cannot walk out. The
+      workdir != "" test is load-bearing: startsWith("") is true for every
+      path, so without it an unresolvable workdir would turn containment off
+      while still reading as if it were on. write_roots comes from the user's
+      config — the place to grant a narrow writable path inside a cross-repo
+      brain (#31). Reads are not confined, so a brain is readable without
+      being listed here; list only what should be writable.
+    cel: |
+      request.tool in ["write", "edit"] &&
+        !((request.workdir != "" && request.path.startsWith(request.workdir)) ||
+          request.path.startsWith(request.env["NOZ_TMPDIR"]) ||
+          request.write_roots.exists(r, request.path.startsWith(r)))
+    verdict: DENY
+
+  - name: allow-file-access
+    description: Reads and edits, after the secret denials above
+    cel: request.tool in ["read", "write", "edit", "glob", "grep"]
+    verdict: ALLOW
+
+  # --- Default ---
+
+  - name: default-deny
+    description: Anything nobody enumerated is off, not available
+    verdict: DENY

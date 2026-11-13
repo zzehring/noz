@@ -13,6 +13,11 @@ type CommandRequest struct {
 	Agent     string            `json:"agent,omitempty"`
 	SessionID string            `json:"session,omitempty"`
 	Mode      string            `json:"mode,omitempty"` // "autonomous" or "interactive"
+
+	// WriteRoots are directories an agent may write to besides the session
+	// itself, from the user's config. A list rather than a joined string so a
+	// policy can test it with the same .exists idiom as the other rules.
+	WriteRoots []string `json:"write_roots,omitempty"`
 }
 
 // Verdict is the result of a CEL policy evaluation.
