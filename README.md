@@ -389,6 +389,7 @@ harmless; they vanish when you `noz rm` the session.
 | `noz profile …` | Manage session profiles (`list`/`create`/`edit`/`show`) |
 | `noz setup tmux` | Print the tmux status-bar + jump-key snippet (`--check` verifies it's live) |
 | `noz setup claude` | Install CEL gate hooks (optional) |
+| `noz publish` | Push this session's branch and open a draft PR; noz holds the forge credential so the session never does (`--base`, `--title`, `--dry-run`) |
 | `noz gate` / `noz policy …` | Policy endpoint + introspection (optional) |
 
 ## Roadmap

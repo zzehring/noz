@@ -61,6 +61,8 @@ Run with no arguments to show the session dashboard (same as 'noz ls').`,
 	rootCmd.AddCommand(newSetupCmd())
 
 	// Optional command-gating.
+	rootCmd.AddCommand(newPublishCmd())
+	rootCmd.AddCommand(newCredentialHelperCmd())
 	rootCmd.AddCommand(newGateCmd())
 	rootCmd.AddCommand(newPolicyCmd())
 
