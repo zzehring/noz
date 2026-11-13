@@ -185,7 +185,7 @@ rules:
 
 func TestYAMLPolicyFiles(t *testing.T) {
 	// Test that shipped YAML policies load without error
-	for _, name := range []string{"readonly", "dev", "sre"} {
+	for _, name := range []string{"readonly", "dev", "sre", "brr"} {
 		t.Run(name, func(t *testing.T) {
 			_, err := New("../../policies/" + name + ".yaml")
 			if err != nil {

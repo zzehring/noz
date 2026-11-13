@@ -3,6 +3,66 @@ name: dev
 description: Development policy — allows code changes, pauses on push/PR
 
 rules:
+  # --- Secrets, first. Ordering is load-bearing: rules are first-match-wins,
+  # so a guard placed after an allowlist never runs. These sat below safe-tools,
+  # which is how `cat ~/.aws/credentials` evaluated to ALLOW while a Read of the
+  # same path was DENY (#24). They also now cover bash arguments, since the file
+  # tools were never the only way to read a file.
+
+  - name: block-sensitive-files
+    cel: |
+      (request.tool in ["read", "write", "edit"] &&
+        request.path.matches(".*\\.(env|pem|key|p12|pfx|secret|credentials)$") ||
+         request.path.endsWith("/credentials") || request.path.endsWith("/secrets")) ||
+      (request.tool == "bash" &&
+        request.args.exists(a, a.matches(".*\\.(env|pem|key|p12|pfx|secret|credentials)$") ||
+          a.endsWith("/credentials") || a.endsWith("/secrets")))
+    verdict: DENY
+
+  - name: block-sensitive-dirs
+    cel: |
+      (request.tool in ["read", "write", "edit"] &&
+        (request.path.contains("/.config/sops/") ||
+         request.path.contains("/.config/age/") ||
+         request.path.contains("/.age/") ||
+         request.path.contains("/.config/gh/") ||
+         request.path.contains("/.config/tea/") ||
+         request.path.contains("/.git-credentials") ||
+         request.path.contains("/.docker/config.json") ||
+         request.path.contains("/.npmrc") ||
+         request.path.contains("/Library/Keychains/") ||
+         request.path.contains("/.ssh/") ||
+         request.path.contains("/.aws/") ||
+         request.path.contains("/.config/gcloud/") ||
+         request.path.contains("/.config/gcx/") ||
+         request.path.contains("/.kube/config") ||
+         request.path.contains("/.gnupg/") ||
+         request.path.contains("/.netrc"))) ||
+      (request.tool == "bash" &&
+        request.args.exists(a,
+          a.contains("/.config/sops/") ||
+          a.contains("/.config/age/") ||
+          a.contains("/.age/") ||
+          a.contains("/.config/gh/") ||
+          a.contains("/.config/tea/") ||
+          a.contains("/.git-credentials") ||
+          a.contains("/.docker/config.json") ||
+          a.contains("/.npmrc") ||
+          a.contains("/Library/Keychains/") ||
+          a.contains("/.ssh/") ||
+          a.contains("/.aws/") ||
+          a.contains("/.config/gcloud/") ||
+          a.contains("/.config/gcx/") ||
+          a.contains("/.kube/config") ||
+          a.contains("/.gnupg/") ||
+          a.contains("/.netrc")))
+    verdict: DENY
+
+  - name: block-env-dump
+    description: Dumping the environment leaks whatever credential was injected
+    cel: request.cmd in ["env", "printenv"]
+    verdict: DENY
+
   # --- Bash tool rules ---
 
   - name: kubectl-readonly
@@ -45,12 +105,20 @@ rules:
 
   - name: safe-tools
     cel: |
-      request.cmd in ["cat", "ls", "find", "grep", "rg", "jq", "yq", "head", "tail", "wc", "diff", "file", "stat", "tree", "less", "sort", "uniq", "cut", "tr", "awk", "sed", "pwd", "which", "env", "echo", "date", "curl", "wget"]
+      request.cmd in ["cat", "ls", "find", "grep", "rg", "jq", "yq", "head", "tail", "wc", "diff", "file", "stat", "tree", "less", "sort", "uniq", "cut", "tr", "awk", "sed", "pwd", "which", "echo", "date", "curl", "wget"]
     verdict: ALLOW
 
   - name: language-tools
+    description: >
+      Toolchain binaries, including the formatters and linters CI requires.
+      The list allowed "go" but not "gofmt" or "golangci-lint", so an agent
+      under dev could not run the gate AGENTS.md asks for — while the stricter
+      brr policy could. Found by running a real agent against this policy.
     cel: |
-      request.cmd in ["go", "node", "npm", "npx", "python", "pip", "make", "cargo", "rustc"]
+      request.cmd in [
+        "go", "gofmt", "goimports", "golangci-lint", "govulncheck",
+        "node", "npm", "npx", "python", "pip", "make", "cargo", "rustc",
+        "cargo-fmt", "rustfmt", "prettier", "eslint", "ruff", "black"]
     verdict: ALLOW
 
   - name: editors
@@ -60,22 +128,17 @@ rules:
 
   # --- File access rules ---
 
-  - name: block-sensitive-files
+  - name: writes-outside-worktree-pause
+    description: >
+      A write outside the session worktree is unusual enough to confirm. Same
+      escape as brr's confine-writes, but dev has a human present, so this
+      asks instead of refusing.
     cel: |
-      request.tool in ["read", "write", "edit"] &&
-        request.path.matches(".*\\.(env|pem|key|p12|pfx|secret|credentials)$")
-    verdict: DENY
-
-  - name: block-sensitive-dirs
-    cel: |
-      request.tool in ["read", "write", "edit"] &&
-        (request.path.contains("/.ssh/") ||
-         request.path.contains("/.aws/") ||
-         request.path.contains("/.config/gcloud/") ||
-         request.path.contains("/.config/gcx/") ||
-         request.path.contains("/.kube/config") ||
-         request.path.contains("/.gnupg/"))
-    verdict: DENY
+      request.tool in ["write", "edit"] &&
+        !((request.workdir != "" && request.path.startsWith(request.workdir)) ||
+          request.path.startsWith(request.env["NOZ_TMPDIR"]) ||
+          request.write_roots.exists(r, request.path.startsWith(r)))
+    verdict: PAUSE
 
   - name: allow-file-access
     description: Dev policy allows reads and writes (except sensitive)

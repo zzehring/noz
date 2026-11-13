@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -58,10 +61,17 @@ Designed to be called from agent pre-execution hooks:
 }
 
 func runGate(inputFormat, tool, guardLog string) error {
-	// Load policy
+	// A gate that cannot load must block, not error out. The Claude Code hook
+	// contract is exit 2 = block, exit 0 = proceed, and *any other code —
+	// including the 1 a returned error becomes — is a non-blocking error*, so
+	// the tool call would run. A missing policy path or malformed config would
+	// then fail open: the gate looks installed and gates nothing. Fail closed
+	// instead, loudly, so a misconfigured gate denies rather than waves through.
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		logGuard(guardLog, "DENY", tool, "config-load-failed", err.Error())
+		fmt.Fprintf(os.Stderr, "noz: cannot load config (%v) — denied\n", err)
+		os.Exit(2)
 	}
 
 	pp := policyName
@@ -71,7 +81,9 @@ func runGate(inputFormat, tool, guardLog string) error {
 
 	g, err := gate.New(pp)
 	if err != nil {
-		return fmt.Errorf("loading policy: %w", err)
+		logGuard(guardLog, "DENY", tool, "policy-load-failed", err.Error())
+		fmt.Fprintf(os.Stderr, "noz: cannot load policy %q (%v) — denied\n", pp, err)
+		os.Exit(2)
 	}
 
 	// Route based on tool type
@@ -79,7 +91,7 @@ func runGate(inputFormat, tool, guardLog string) error {
 	case "bash":
 		return gateBash(g, inputFormat, guardLog)
 	case "read", "write", "edit", "glob", "grep":
-		return gateFile(g, tool, inputFormat, guardLog)
+		return gateFile(g, tool, inputFormat, guardLog, cfg.WriteRoots())
 	default:
 		logGuard(guardLog, "DENY", tool, "unknown-tool", "")
 		fmt.Fprintf(os.Stderr, "noz: unknown tool type %q — denied\n", tool)
@@ -109,7 +121,7 @@ func gateBash(g *gate.Gate, inputFormat, guardLog string) error {
 
 	commands, err := shellparse.Parse(cmdStr)
 	if err != nil {
-		logGuard(guardLog, "DENY", cmdStr, "parse-error", err.Error())
+		logGuard(guardLog, "DENY", redactString(cmdStr), "parse-error", err.Error())
 		fmt.Fprintf(os.Stderr, "noz: parse error: %v\n", err)
 		os.Exit(2)
 		return nil
@@ -123,10 +135,9 @@ func gateBash(g *gate.Gate, inputFormat, guardLog string) error {
 			Mode: "autonomous",
 		}
 
-		display := cmd.Name
-		if len(cmd.Args) > 0 {
-			display += " " + strings.Join(cmd.Args, " ")
-		}
+		// Redacted here rather than at the log call: display also reaches
+		// stderr, which agent harnesses capture into transcripts.
+		display := redactArgs(cmd.Name, cmd.Args)
 
 		if blocked := evalAndReport(g, req, display, guardLog); blocked {
 			return nil
@@ -140,7 +151,7 @@ func gateBash(g *gate.Gate, inputFormat, guardLog string) error {
 }
 
 // gateFile handles Read/Write/Edit/Glob/Grep tool calls — evaluates file path.
-func gateFile(g *gate.Gate, tool, inputFormat, guardLog string) error {
+func gateFile(g *gate.Gate, tool, inputFormat, guardLog string, writeRoots []string) error {
 	toolInput, err := readToolInput(inputFormat)
 	if err != nil {
 		return err
@@ -155,13 +166,27 @@ func gateFile(g *gate.Gate, tool, inputFormat, guardLog string) error {
 
 	path := extractPath(toolInput)
 	if path == "" {
-		return nil // no path to evaluate, allow
+		// A read-shaped call with no path has nothing to evaluate. A write with
+		// no path does, and allowing it unevaluated would be a hole beside the
+		// fail-closed branch above.
+		if tool == "write" || tool == "edit" {
+			logGuard(guardLog, "DENY", tool, "no-path", "write with no path")
+			fmt.Fprintf(os.Stderr, "noz: %s tool with no path — denied\n", tool)
+			os.Exit(2)
+		}
+		return nil
 	}
 
+	workdir := sessionWorkDir()
 	req := &gate.CommandRequest{
-		Tool: tool,
-		Path: path,
-		Mode: "autonomous",
+		Tool:    tool,
+		Path:    normalizePath(path, workdir),
+		WorkDir: workdir,
+		// Roots a policy needs but cannot know for itself. Always set, so a
+		// policy indexing these can't fail at evaluation time.
+		Env:        map[string]string{"NOZ_TMPDIR": filepath.Clean(os.TempDir())},
+		WriteRoots: writeRoots,
+		Mode:       "autonomous",
 	}
 
 	// For write/edit, capture content for policy evaluation
@@ -282,11 +307,187 @@ func logGuard(path, verdict, cmd, rule, reason string) {
 		return
 	}
 
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	// 0600: the log records what the agent ran. Even redacted, that is not
+	// material for every account on the machine to read.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		return
 	}
 	defer func() { _ = f.Close() }()
 
 	fmt.Fprintf(f, "%s %-6s %s (rule: %s)\n", time.Now().UTC().Format(time.RFC3339), verdict, cmd, rule)
+}
+
+// --- audit log redaction ---------------------------------------------------
+//
+// The guard log exists so you can answer "what did it do, and when?"
+// (PRINCIPLES #7). Writing full argv to answer it put credentials on disk in
+// plaintext: anything passed as a flag value — a bearer header, a URL with
+// userinfo, --token — was persisted append-only and world-readable.
+//
+// Redaction here is best-effort by nature: it recognises known credential
+// shapes and cannot recognise one it has never seen. So it is a reduction, not
+// a guarantee, and two things carry the rest of the weight — the log is 0600,
+// and credentials should reach a tool through the environment or stdin rather
+// than argv, which is what the broker exists to make easy.
+
+// secretFlags are flags whose *following value* is a credential.
+var secretFlags = map[string]bool{
+	"--token": true, "--password": true, "--passwd": true, "--secret": true,
+	"--api-key": true, "--apikey": true, "--access-key": true,
+	"--secret-access-key": true, "--private-key": true, "--passphrase": true,
+	"--auth": true, "--bearer": true, "--credential": true, "-p": true,
+}
+
+// secretValuePrefixes are credential formats recognisable on their own, so they
+// are caught even when passed positionally with no telltale flag.
+var secretValuePrefixes = []string{
+	"ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_", // GitHub
+	"glpat-",                           // GitLab
+	"xoxb-", "xoxp-", "xoxa-", "xoxr-", // Slack
+	"sk-", "sk_live_", "pk_live_", "rk_live_", // OpenAI / Stripe
+	"AKIA", "ASIA", // AWS access key IDs
+	"AIza",         // Google API
+	"hvs.", "hvb.", // Vault
+	"eyJhbGciOi", // a JWT header, base64'd
+}
+
+const redacted = "[redacted]"
+
+var (
+	// scheme://user:pass@host — keep the scheme and host, drop the userinfo.
+	reURLUserinfo = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/\s@]+@`)
+	// Authorization: Bearer <token>, and the Basic variant.
+	reAuthHeader = regexp.MustCompile(`(?i)(authorization\s*:\s*(?:bearer|basic|token)\s+)[^\s"']+`)
+	// KEY=secret in an inline env assignment, for keys that look sensitive.
+	reEnvAssign = regexp.MustCompile(`(?i)\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|APIKEY|API_KEY|CREDENTIAL|PRIVATE_KEY)[A-Z0-9_]*=)[^\s"']+`)
+)
+
+// redactString masks credential shapes recognisable from the text alone.
+func redactString(s string) string {
+	s = reURLUserinfo.ReplaceAllString(s, "${1}"+redacted+"@")
+	s = reAuthHeader.ReplaceAllString(s, "${1}"+redacted)
+	s = reEnvAssign.ReplaceAllString(s, "${1}"+redacted)
+
+	fields := strings.Fields(s)
+	for i, f := range fields {
+		if hasSecretPrefix(f) {
+			fields[i] = redacted
+		}
+	}
+	return strings.Join(fields, " ")
+}
+
+// hasSecretPrefix reports whether tok looks like a credential on its own. The
+// length floor keeps a bare "sk-" or a word like "AKIAing" from matching.
+func hasSecretPrefix(tok string) bool {
+	t := strings.Trim(tok, `"'`)
+	for _, p := range secretValuePrefixes {
+		if len(t) > len(p)+8 && strings.HasPrefix(t, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// redactArgs renders argv for the audit log with credential values masked. It
+// adds what redactString can't see on its own: a value is secret because of the
+// flag in front of it.
+func redactArgs(cmd string, args []string) string {
+	out := make([]string, 0, len(args)+1)
+	if cmd != "" {
+		out = append(out, cmd)
+	}
+	maskNext := false
+	for _, a := range args {
+		switch {
+		case maskNext:
+			out = append(out, redacted)
+			maskNext = false
+		case secretFlags[a]:
+			out = append(out, a)
+			maskNext = true
+		default:
+			// --flag=value, where the flag names a credential.
+			if k, _, ok := strings.Cut(a, "="); ok && secretFlags[k] {
+				out = append(out, k+"="+redacted)
+				continue
+			}
+			out = append(out, redactString(a))
+		}
+	}
+	// A trailing secret flag with no value must not look like it had one.
+	if maskNext {
+		out = append(out, redacted)
+	}
+	return strings.Join(out, " ")
+}
+
+// --- write containment ------------------------------------------------------
+//
+// A policy can only confine writes if it knows where the session lives, and
+// request.workdir was exposed to CEL but never populated — so a containment
+// rule written against it was startsWith(""), true for every path, protective
+// only in appearance. That is the same shape as the rule-ordering bug in #24.
+
+// sessionWorkDir returns the directory the session is rooted at, or "" when it
+// can't be established — which the policies treat as "not contained" and deny,
+// rather than as a free pass.
+//
+// Taking cwd on its own was the bug this replaces: run the gate from / or from
+// $HOME and every path on the machine "starts with" the working directory, so
+// containment read as enabled while allowing everything. A session root has to
+// be something noz can vouch for, so candidates are only accepted when they sit
+// strictly inside $NOZ_ROOT (isWithinRoot excludes the root itself and any ..
+// walk) or are the top level of a real git worktree.
+func sessionWorkDir() string {
+	root := nozRoot()
+	cwd, _ := os.Getwd()
+
+	// NOZ_PROJECT_DIR first so a harness without Claude's variable can say where
+	// the session is — the pi/omp gate extension sets it. CLAUDE_PROJECT_DIR is
+	// kept because Claude Code sets it for hooks without being asked.
+	for _, cand := range []string{os.Getenv("NOZ_PROJECT_DIR"), os.Getenv("CLAUDE_PROJECT_DIR"), cwd} {
+		if cand == "" {
+			continue
+		}
+		abs, err := filepath.Abs(cand)
+		if err != nil {
+			continue
+		}
+		if abs = filepath.Clean(abs); isWithinRoot(root, abs) {
+			return abs
+		}
+	}
+
+	// Outside $NOZ_ROOT — fall back to the repo's own top level, so the gate
+	// stays usable in an ordinary checkout. Still never "/" or a bare $HOME
+	// unless that is genuinely a repo root.
+	if out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output(); err == nil {
+		if top := strings.TrimSpace(string(out)); top != "" {
+			return filepath.Clean(top)
+		}
+	}
+	return ""
+}
+
+// normalizePath makes a tool's path absolute and lexically clean, so a prefix
+// comparison in a policy means what it reads as. Without Clean, a path like
+// "<worktree>/../../.ssh/id_rsa" starts with the worktree as a string while
+// pointing outside it.
+//
+// Containment is lexical on purpose: it does not resolve symlinks, because the
+// per-repo brain is a symlink noz itself plants at "<worktree>/.noz", and
+// resolving it would deny the writes noz set that link up to allow. The gap
+// that leaves — the agent planting its own symlink and writing through it —
+// is closed on the command side instead: `ln` is in no policy's allowlist, and
+// the file tools cannot create links.
+func normalizePath(p, workdir string) string {
+	if !filepath.IsAbs(p) && workdir != "" {
+		p = filepath.Join(workdir, p)
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		return filepath.Clean(abs)
+	}
+	return filepath.Clean(p)
 }
